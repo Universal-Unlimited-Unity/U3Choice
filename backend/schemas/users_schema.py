@@ -15,4 +15,5 @@ class user(BaseModel):
     updated_at: date
     last_login: date
     verified: bool = False
+    country: str = Field(max_length=2)
 
