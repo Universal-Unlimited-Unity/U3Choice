@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, EmailStr
-from datetime import date
+from datetime import datetime, date, timezone
 from uuid import uuid4, UUID
 class user(BaseModel):
     id: UUID = Field(default_factory=uuid4())
@@ -11,9 +11,9 @@ class user(BaseModel):
     photo_url: str
     dob: date
     status: str
-    created_at: date
-    updated_at: date
-    last_login: date
+    created_at: datetime = Field(default_factory=datetime.now())
+    updated_at: datetime
+    last_login: datetime
     verified: bool = False
     country: str = Field(max_length=2)
 

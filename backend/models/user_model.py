@@ -9,7 +9,7 @@ users_table = Table(
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
     Column("username", String, nullable=False, unique=True, index=True),
-    Column("email", String, nullable=False, unique=True),
+    Column("email", String, nullable=False, unique=True, index=True),
     Column("pwd_hash", String, nullable=False),
     Column("name", String, nullable=False),
     Column("bio", String(50), nullable=True),
