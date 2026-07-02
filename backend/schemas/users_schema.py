@@ -1,19 +1,28 @@
 from pydantic import BaseModel, Field, EmailStr
+from pydantic_extra_types.phone_numbers import PhoneNumber
 from datetime import datetime, date, timezone
 from uuid import uuid4, UUID
-class user(BaseModel):
+from enum import Enum
+
+class Status(str, Enum):
+    Active = 'Active'
+    Suspended = 'Suspended'
+    Inactive = 'Inactive'
+
+class User(BaseModel):
     id: UUID = Field(default_factory=uuid4())
     username: str
     email: EmailStr
+    phone: PhoneNumber
     pwd_hash: str
     name: str
     bio: str | None = Field(max_length=50)
     photo_url: str
     dob: date
-    status: str
+    status: Status = Status.Active
     created_at: datetime = Field(default_factory=datetime.now())
-    updated_at: datetime
-    last_login: datetime
+    updated_at: datetime | None = None
+    last_login: datetime | None = None
     verified: bool = False
     country: str = Field(max_length=2)
 

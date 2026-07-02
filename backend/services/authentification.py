@@ -1,7 +1,8 @@
 from database import eng
-from sqlalchemy import select
+from sqlalchemy import select, insert
 from models.user_model import users_table
 from password_validator import PasswordValidator
+from schemas.users_schema import User
 
 def username_used(username: str):
     with eng.connect() as conn:
@@ -22,6 +23,12 @@ def pwd_strong(pwd: str):
     .has().lowercase()
     .has().digits()
     .has().symbols()
-)
+    )
     return schema.validate(pwd)
-    
+
+def registration(user: User):
+    with eng.begin() as conn:
+        dumped_user = user.model_dump()
+        conn.execute(insert(users_table).values(dumped_user))
+
+
