@@ -9,12 +9,11 @@ class Status(str, Enum):
     Suspended = 'Suspended'
     Inactive = 'Inactive'
 
-class User(BaseModel):
+class User_token(BaseException):
     id: UUID = Field(default_factory=uuid4())
     username: str
     email: EmailStr
     phone: PhoneNumber
-    pwd_hash: str
     name: str
     bio: str | None = Field(max_length=50)
     photo_url: str
@@ -25,4 +24,8 @@ class User(BaseModel):
     last_login: datetime | None = None
     verified: bool = False
     country: str = Field(max_length=2)
+    
+class User(User_token):
+    pwd_hash: str
+
 
