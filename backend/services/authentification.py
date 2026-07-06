@@ -50,6 +50,8 @@ def signin(email: EmailStr, pwd: str):
         payload = (User_token(**user_row)).model_dump()
         payload["exp"] = datetime.utcnow() + timedelta(hours=2)
         return jwt.encode(payload, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
+    else:
+        return None
 
 
 def decode_token(token: str):
