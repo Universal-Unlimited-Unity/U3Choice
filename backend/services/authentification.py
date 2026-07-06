@@ -7,6 +7,7 @@ from passlib.context import CryptContext
 from pydantic import EmailStr
 from jose import jwt
 from datetime import datetime, timedelta
+from config import settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated='auto')
 
 def username_used(username: str):
@@ -48,6 +49,13 @@ def signin(email: EmailStr, pwd: str):
             user_row = conn.execute(select(users_table).where(users_table.c.email == email)).mappings().first()
         payload = (User_token(**user_row)).model_dump()
         payload["exp"] = datetime.utcnow() + timedelta(hours=2)
-        
+        return jwt.encode(payload, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
 
 
+def decode_token(token: str):
+    try:
+        payload = jwt.decode(token, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
+        return payload
+    except Exception as e:
+        print(e)
+        return None
