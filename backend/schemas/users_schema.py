@@ -24,7 +24,8 @@ class User_token(BaseException):
     last_login: datetime | None = None
     verified: bool = False
     country: str = Field(max_length=2)
-    
+    email_verified: bool = False
+
 class User(User_token):
     pwd_hash: str
 

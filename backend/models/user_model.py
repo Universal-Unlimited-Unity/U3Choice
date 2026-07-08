@@ -21,4 +21,5 @@ users_table = Table(
     Column("last_login", Date, nullable=False),
     Column("verified", Boolean, nullable=False),
     Column("country", String(2), nullable=False),
+    Column("email_verified", Boolean, nullable=False)
 )
