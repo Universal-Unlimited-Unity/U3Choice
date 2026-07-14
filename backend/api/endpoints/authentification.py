@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, HTTPRes
-from services.authentification import signup, signin, decode_token, username_used, email_used, pwd_strong, hash_pwd
-from scheæas.users_schema import User
+from backend.services.authentification import signup, signin, decode_token, username_used, email_used, pwd_strong, hash_pwd
+from backend.scheæas.users_schema import User
 
 users_router = APIRouter(tags=["users"])
 
@@ -21,4 +21,6 @@ async def signin(email: str, pwd: str):
     token = signin(email, pwd)
     if not token:
         raise HTTPException(status_code=400, detail="INVALID_CREDENTIALS")
+    if token == -1:
+        raise HTTPException(status_code=403, detail="USER_SUSPENDED")
     return {"token": token}

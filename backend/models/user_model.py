@@ -1,4 +1,4 @@
-from database import metadata
+from backend.database import metadata
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Table, Column, MetaData, String, Boolean, Date
 

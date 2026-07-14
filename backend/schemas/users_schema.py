@@ -7,10 +7,19 @@ from enum import Enum
 class Status(str, Enum):
     Active = 'Active'
     Suspended = 'Suspended'
-    Inactive = 'Inactive'
 
-class User_token(BaseException):
+class User_Profile(BaseModel):
+    username: str
+    name: str
+    bio: str | None = Field(max_length=50)
+    photo_url: str
+    country: str = Field(max_length=2)
+    verified: bool = False
+    status: Status = Status.Active
+    
+class User(User_Profile):
     id: UUID = Field(default_factory=uuid4())
+    pwd_hash: str
     username: str
     email: EmailStr
     phone: PhoneNumber
@@ -25,8 +34,5 @@ class User_token(BaseException):
     verified: bool = False
     country: str = Field(max_length=2)
     email_verified: bool = False
-
-class User(User_token):
-    pwd_hash: str
-
+    
 

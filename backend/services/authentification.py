@@ -1,8 +1,8 @@
-from database import eng
+from backend.database import eng
 from sqlalchemy import select, insert
-from models.user_model import users_table
+from backend.models import users_table
 from password_validator import PasswordValidator
-from schemas.users_schema import User, User_token
+from schemas.users_schema import User
 from passlib.context import CryptContext
 from pydantic import EmailStr
 from jose import jwt
@@ -43,11 +43,15 @@ def hash_pwd(pwd_plain: str):
 def signin(email: EmailStr, pwd: str):
     with eng.begin() as conn:
         real_pwd = conn.execute(select(users_table.c.pwd_hash).where(users_table.c.email == email)).scalar()
+        if not real_pwd:
+            return None
     if pwd_context.verify(pwd, real_pwd):
         # Generate User's Token
         with eng.begin() as conn:
             user_row = conn.execute(select(users_table).where(users_table.c.email == email)).mappings().first()
-        payload = (User_token(**user_row)).model_dump()
+            if user_row["status"] != "Active":
+                return -1
+        payload = {"id": user_row["id"], "status": user_row["status"]}
         payload["exp"] = datetime.utcnow() + timedelta(hours=2)
         return jwt.encode(payload, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
     else:
