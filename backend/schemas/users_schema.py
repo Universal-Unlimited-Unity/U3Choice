@@ -9,15 +9,28 @@ class Status(str, Enum):
     Suspended = 'Suspended'
 
 class User_Profile(BaseModel):
+    id: UUID
     username: str
     name: str
     bio: str | None = Field(max_length=50)
     photo_url: str
     country: str = Field(max_length=2)
     verified: bool = False
-    status: Status = Status.Active
+    status: Status
     
-class User(User_Profile):
+class Profile_View(BaseModel):
+    viwed_id: UUID
+    username: str
+    viwer_id: UUID
+    name: str
+    bio: str | None = Field(max_length=50)
+    photo_url: str
+    country: str = Field(max_length=2)
+    verified: bool = False
+    status: Status
+    is_owner: bool = False
+    
+class User(BaseModel):
     id: UUID = Field(default_factory=uuid4())
     pwd_hash: str
     username: str
@@ -35,4 +48,5 @@ class User(User_Profile):
     country: str = Field(max_length=2)
     email_verified: bool = False
     
-
+class Request_ID(BaseModel):
+    id: UUID

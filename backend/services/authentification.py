@@ -51,7 +51,7 @@ def signin(email: EmailStr, pwd: str):
             user_row = conn.execute(select(users_table).where(users_table.c.email == email)).mappings().first()
             if user_row["status"] != "Active":
                 return -1
-        payload = {"id": user_row["id"], "status": user_row["status"]}
+        payload = {"id": user_row["id"], "status": user_row["status"], "username": user_row["username"]}
         payload["exp"] = datetime.utcnow() + timedelta(hours=2)
         return jwt.encode(payload, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
     else:

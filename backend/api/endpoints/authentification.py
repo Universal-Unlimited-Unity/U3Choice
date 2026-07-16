@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException, HTTPRes
+from fastapi import APIRouter, HTTPException, Body, Query
 from backend.services.authentification import signup, signin, decode_token, username_used, email_used, pwd_strong, hash_pwd
-from backend.scheæas.users_schema import User
-
-users_router = APIRouter(tags=["users"])
+from backend.schemas.users_schema import User
+from typing import Annotated
+from backend.schemas.authentification import credentials
+users_router = APIRouter(prefix="/auth", tags=["authentification"])
 
 @users_router.post("/signup")
-async def signup(user: User):
+async def signup(user: Annotated[User, Body()]):
     if username_used(user.username):
         raise HTTPException(status_code=400, detail="USERNAME_TAKEN")
     if email_used(user.email):
@@ -17,10 +18,10 @@ async def signup(user: User):
     return {"message": "User created successfully"}
 
 @users_router.post("/signin")
-async def signin(email: str, pwd: str):
-    token = signin(email, pwd)
+async def signin(credentials: Annotated[credentials, Body()]):
+    token = signin(credentials.email, credentials.pwd)
     if not token:
         raise HTTPException(status_code=400, detail="INVALID_CREDENTIALS")
     if token == -1:
         raise HTTPException(status_code=403, detail="USER_SUSPENDED")
-    return {"token": token}
+    return {"token": token, "type": "bearer"}
