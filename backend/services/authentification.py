@@ -8,6 +8,21 @@ from pydantic import EmailStr
 from jose import jwt
 from datetime import datetime, timedelta
 from config import settings
+from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="VerifyToken")
+
+def verify_token(token: str = Depends(oauth2_scheme)):
+    try:
+        user = decode_token(token)
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated='auto')
 
 def username_used(username: str):

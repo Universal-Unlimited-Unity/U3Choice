@@ -3,8 +3,9 @@ from backend.database import eng
 from sqlalchemy import update
 from backend.models import users_table
 
-def suspend_user(user_id):
-    with eng.begin() as conn:
-        stmt = update(users_table).where(users_table.c.id == user_id).values(status="Suspended")
-        conn.execute(stmt)
-        redis.delete(f"user:session:{user_id}")
+def refresh_user_cashe(username: str):
+    cashed_keys = redis.smembers(f"profile_view_cache:{username}")
+    if cashed_keys:
+        for key in cashed_keys:
+            redis.delete(key)
+        redis.delete(f"profile_view_cache:{username}")

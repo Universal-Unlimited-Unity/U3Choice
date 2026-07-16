@@ -8,6 +8,14 @@ class Status(str, Enum):
     Active = 'Active'
     Suspended = 'Suspended'
 
+class UserSummary(BaseModel):
+    id: UUID
+    username: str
+    name: str
+    photo_url: str
+    country: str = Field(max_length=2)
+    
+    
 class User_Profile(BaseModel):
     id: UUID
     username: str
@@ -29,6 +37,7 @@ class Profile_View(BaseModel):
     verified: bool = False
     status: Status
     is_owner: bool = False
+    is_friends: bool = False
     
 class User(BaseModel):
     id: UUID = Field(default_factory=uuid4())
@@ -41,7 +50,7 @@ class User(BaseModel):
     photo_url: str
     dob: date
     status: Status = Status.Active
-    created_at: datetime = Field(default_factory=datetime.now())
+    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
     updated_at: datetime | None = None
     last_login: datetime | None = None
     verified: bool = False
