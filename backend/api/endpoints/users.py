@@ -1,14 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends, Path, Body, Query
-from backend.services.users import get_user_profile_BY_USERNAME
-from backend.schemas.users_schema import Profile_View
-from backend.redis import redis
+from services.users import get_user_profile_BY_USERNAME
+from schemas.users_schema import Profile_View
+from redis_client import redis
 import json
-import jwt
 from typing import Annotated
-from backend.services.friendships import check_friendship_status, check_friendship_request_exists, is_blocked_friendship_exists
-from backend.schemas.users_schema import UserSummary
-from backend.services.users import get_friends_brief
-from backend.services.authentification import verify_token
+from services.friendships import check_friendship_status, check_friendship_request_exists, is_blocked_friendship_exists
+from schemas.users_schema import UserSummary
+from services.users import get_friends_brief
+from services.authentification import verify_token
 
 router = APIRouter(prefix="/users", tags=["users"])
 

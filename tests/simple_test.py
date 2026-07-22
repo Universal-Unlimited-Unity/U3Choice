@@ -1,6 +1,6 @@
 from backend.database import eng as engine
 from sqlalchemy import select
-from backend.redis import redis as redis_client
+from backend.redis_client import redis as redis_client
 
 
 def test_database_core_connection():

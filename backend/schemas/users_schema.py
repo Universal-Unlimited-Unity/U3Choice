@@ -47,7 +47,7 @@ class User(BaseModel):
     phone: PhoneNumber
     name: str
     bio: str | None = Field(max_length=50)
-    photo_url: str
+    photo_url: str = "images/default_profile.png"
     dob: date
     status: Status = Status.Active
     created_at: datetime = Field(default_factory=datetime.now(timezone.utc))

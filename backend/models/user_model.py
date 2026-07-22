@@ -1,8 +1,7 @@
-from backend.database import metadata
+from database import metadata
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Table, Column, MetaData, String, Boolean, Date
+from sqlalchemy import Table, Column, String, Boolean, Date
 
-metadata = MetaData()
 
 users_table = Table(
     "users",
@@ -13,13 +12,14 @@ users_table = Table(
     Column("pwd_hash", String, nullable=False),
     Column("name", String, nullable=False),
     Column("bio", String(50), nullable=True),
-    Column("photo_url", String, nullable=False),
+    Column("photo_url", String, nullable=True),
     Column("dob", Date, nullable=False),
     Column("status", String, nullable=False),
     Column("created_at", Date, nullable=False),
-    Column("updated_at", Date, nullable=False),
-    Column("last_login", Date, nullable=False),
+    Column("updated_at", Date, nullable=True),
+    Column("last_login", Date, nullable=True),
     Column("verified", Boolean, nullable=False),
     Column("country", String(2), nullable=False),
-    Column("email_verified", Boolean, nullable=False)
+    Column("email_verified", Boolean, nullable=False),
+    Column("phone", String, nullable=False)
 )

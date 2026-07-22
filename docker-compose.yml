@@ -1,10 +1,9 @@
-version: '3.8'
 services:
   database:
     image: postgres:15.3
     container_name: database
     env_file:
-      - ./secret/.env
+      - backend/.env
     ports:
       - "5432:5432"
     volumes:
@@ -15,21 +14,42 @@ services:
     ports:
       - "6379:6379"
     env_file:
-      - ./secret/.env
+      - backend/.env
     volumes:
       - redis_data:/data
   backend:
     build:
-      context: .
-      dockerfile: ./backend/dockerfile
+      context: ./backend
+      dockerfile: dockerfile
     container_name: backend
     env_file:
-      - ./secret/.env
+      - backend/.env
     ports:
       - "8000:8000"
     depends_on:
       - database
       - redis
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /app
+        - action: rebuild
+          path: ./backend/requirements.txt
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: dockerfile
+    container_name: frontend
+    env_file:
+      - frontend/.env
+    ports:
+      - "5173:5173"
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend
+          target: /app
 volumes:
   postgres_data:
   redis_data:

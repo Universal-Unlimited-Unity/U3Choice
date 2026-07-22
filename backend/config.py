@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     TOKEN_EXP_H: int
     TOKEN_KEY: str
     model_config = SettingsConfigDict(
-        env_file=BASE_DIR / "secret" / ".env",
+        env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore"
     )

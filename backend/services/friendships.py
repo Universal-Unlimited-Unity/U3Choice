@@ -1,11 +1,11 @@
-from backend import redis
-from backend.database import eng
+from redis_client import redis
+from database import eng
 from sqlalchemy import UUID, Case, select, insert
-from backend.models.friendships_model import friendships_table
-from backend.schemas.friendships_schema import Friendships
+from models.friendships_model import friendships_table
+from schemas.friendships_schema import Friendships
 from datetime import datetime, timezone
-from backend.models.friendships_model import blocked_friendships_table
-from backend.exceptions import FriendRequestNotFound, FriendshipRequestNotFound, FriendshipAlreadyBlocked, FriendshipNotBlocked, SelfBlockError
+from models.friendships_model import blocked_friendships_table
+from exceptions import FriendRequestNotFound, FriendshipAlreadyBlocked, FriendshipNotBlocked, SelfBlockError
 def check_friendship_status(user1_id: UUID, user2_id: UUID) -> bool:
     with eng.begin() as conn:
         stmt = select(1).where(

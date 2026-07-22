@@ -1,6 +1,6 @@
-from backend.database import eng
+from database import eng
 from sqlalchemy import select, insert
-from backend.models import users_table
+from models.user_model import users_table
 from password_validator import PasswordValidator
 from schemas.users_schema import User
 from passlib.context import CryptContext
@@ -27,7 +27,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated='auto')
 
 def username_used(username: str):
     with eng.connect() as conn:
-        stmt = select(users_table).where(users_table.c.id == username)
+        stmt = select(users_table).where(users_table.c.username == username)
         result = conn.execute(stmt).fetchone()
         return result
     

@@ -1,6 +1,7 @@
 from sqlalchemy import ForeignKey, Integer, Date, Table, Column, Index, String
-from backend.database import metadata
+from database import metadata
 from sqlalchemy.dialects.postgresql import UUID
+from models.user_model import users_table
 
 friendships_table = Table(
     "friendships",

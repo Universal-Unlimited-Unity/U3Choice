@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException, Body, Query
-from backend.services.authentification import signup, signin, decode_token, username_used, email_used, pwd_strong, hash_pwd
-from backend.schemas.users_schema import User
+from services.authentification import signup, signin, username_used, email_used, pwd_strong, hash_pwd
+from schemas.users_schema import User
 from typing import Annotated
-from backend.schemas.authentification import credentials
-users_router = APIRouter(prefix="/auth", tags=["authentification"])
+from schemas.authentification import credentials
+auth_router = APIRouter(prefix="/auth", tags=["authentification"])
 
-@users_router.post("/signup")
-async def signup(user: Annotated[User, Body()]):
+@auth_router.post("/signup")
+async def signup_endpoint(user: Annotated[User, Body()]):
     if username_used(user.username):
         raise HTTPException(status_code=400, detail="USERNAME_TAKEN")
     if email_used(user.email):
@@ -17,8 +17,8 @@ async def signup(user: Annotated[User, Body()]):
     signup(user)
     return {"message": "User created successfully"}
 
-@users_router.post("/signin")
-async def signin(credentials: Annotated[credentials, Body()]):
+@auth_router.post("/signin")
+async def signin_endpoint(credentials: Annotated[credentials, Body()]):
     token = signin(credentials.email, credentials.pwd)
     if not token:
         raise HTTPException(status_code=400, detail="INVALID_CREDENTIALS")

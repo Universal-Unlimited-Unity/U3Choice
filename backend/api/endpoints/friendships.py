@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends, Path, Body
-from backend.schemas.friendships_schema import Friendships, Friendships_short, blocked_friendships, blocked_friendships_short
-from backend.services.friendships import send_friendship_request, accept_friendship_request, reject_friendship_request, block_friendship, unblock_friendship
-from backend.exceptions import FriendRequestNotFound, FriendshipAlreadyBlocked, FriendshipNotBlocked, SelfBlockError
+from schemas.friendships_schema import Friendships, Friendships_short, blocked_friendships, blocked_friendships_short
+from services.friendships import send_friendship_request, accept_friendship_request, reject_friendship_request, block_friendship, unblock_friendship
+from exceptions import FriendRequestNotFound, FriendshipAlreadyBlocked, FriendshipNotBlocked, SelfBlockError
 from typing import Annotated
-from backend.services.authentification import verify_token
+from services.authentification import verify_token
 
 router = APIRouter(prefix="/friendships", tags=["friendships"])
 

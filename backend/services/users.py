@@ -1,7 +1,7 @@
 from sqlalchemy import select
-from backend.database import eng
-from backend.models import users_table
-from backend.schemas.users_schema import User_Profile
+from database import eng
+from models.user_model import users_table
+from schemas.users_schema import User_Profile
 from uuid import UUID
 from .friendships import get_friends
 def get_user_profile_BY_ID(id):
