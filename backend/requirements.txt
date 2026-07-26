@@ -5,7 +5,6 @@ pydantic-settings
 pydantic-extra-types
 redis
 celery
-passlib[bcrypt]
 python-jose
 password-validator
 email-validator
@@ -13,3 +12,4 @@ phonenumbers
 pytest
 psycopg[binary]
 psycopg
+pwdlib[argon2]

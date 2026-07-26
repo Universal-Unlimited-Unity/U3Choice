@@ -10,7 +10,7 @@ class Status(str, Enum):
 class Friendships(BaseModel):
     sender_id: UUID
     receiver_id: UUID
-    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime | None = None
     status: Status = Status.Pending
 
@@ -18,7 +18,7 @@ class Friendships(BaseModel):
 class blocked_friendships(BaseModel):
     blocker_id: UUID
     blocked_id: UUID
-    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Friendships_short(BaseModel):
     sender_id: UUID

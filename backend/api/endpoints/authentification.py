@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Body, Query
-from services.authentification import signup, signin, username_used, email_used, pwd_strong, hash_pwd
+from services.authentification import signup, signin, username_used, email_used, pwd_strong, hash_pwd,  verify_age 
 from schemas.users_schema import User
 from typing import Annotated
 from schemas.authentification import credentials
@@ -13,6 +13,8 @@ async def signup_endpoint(user: Annotated[User, Body()]):
         raise HTTPException(status_code=400, detail="EMAIL_TAKEN")
     if not pwd_strong(user.pwd_hash):
         raise HTTPException(status_code=400, detail="PASSWORD_NOT_STRONG")
+    if not verify_age(user.dob):
+        raise HTTPException(status_code=400, detail="USER_UNDERAGE")
     user.pwd_hash = hash_pwd(user.pwd_hash)
     signup(user)
     return {"message": "User created successfully"}

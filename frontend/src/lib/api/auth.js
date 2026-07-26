@@ -1,7 +1,8 @@
-export async function signup(user) {
-    console.log("signup called");
+import {fetchParseHandler} from "./http.js";
+const API_URL = import.meta.env.VITE_AUTH_API_URL;
 
-    const response = await fetch("http://localhost:8000/auth/signup", {
+export async function signup(user) {
+    return await fetchParseHandler(`${API_URL}/auth/signup`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -9,7 +10,17 @@ export async function signup(user) {
         body: JSON.stringify(user)
     });
 
-    console.log(response);
+}
 
-    return response.json();
+export async function signin(user) {
+    
+    return await fetchParseHandler(`${API_URL}/auth/signin`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(user)
+    });
+
+
 }

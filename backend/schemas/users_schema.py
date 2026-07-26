@@ -40,17 +40,17 @@ class Profile_View(BaseModel):
     is_friends: bool = False
     
 class User(BaseModel):
-    id: UUID = Field(default_factory=uuid4())
+    id: UUID = Field(default_factory=uuid4)
     pwd_hash: str
     username: str
     email: EmailStr
     phone: PhoneNumber
     name: str
-    bio: str | None = Field(max_length=50)
+    bio: str | None = Field(max_length=50, default=None)
     photo_url: str = "images/default_profile.png"
     dob: date
     status: Status = Status.Active
-    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime | None = None
     last_login: datetime | None = None
     verified: bool = False

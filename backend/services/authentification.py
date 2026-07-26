@@ -3,13 +3,15 @@ from sqlalchemy import select, insert
 from models.user_model import users_table
 from password_validator import PasswordValidator
 from schemas.users_schema import User
-from passlib.context import CryptContext
 from pydantic import EmailStr
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from config import settings
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException
+from pwdlib import PasswordHash
+
+pwd_hash = PasswordHash.recommended()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="VerifyToken")
 
@@ -23,8 +25,6 @@ def verify_token(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="Invalid token")
     
     
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated='auto')
-
 def username_used(username: str):
     with eng.connect() as conn:
         stmt = select(users_table).where(users_table.c.username == username)
@@ -40,8 +40,6 @@ def email_used(email: str):
 def pwd_strong(pwd: str):
     schema = (PasswordValidator()
     .min(8)
-    .has().uppercase()
-    .has().lowercase()
     .has().digits()
     .has().symbols()
     )
@@ -53,20 +51,20 @@ def signup(user: User):
         conn.execute(insert(users_table).values(dumped_user))
 
 def hash_pwd(pwd_plain: str):
-    return pwd_context.hash(pwd_plain)
+    return pwd_hash.hash(pwd_plain)
 
 def signin(email: EmailStr, pwd: str):
     with eng.begin() as conn:
         real_pwd = conn.execute(select(users_table.c.pwd_hash).where(users_table.c.email == email)).scalar()
         if not real_pwd:
             return None
-    if pwd_context.verify(pwd, real_pwd):
+    if pwd_hash.verify(pwd, real_pwd):
         # Generate User's Token
         with eng.begin() as conn:
             user_row = conn.execute(select(users_table).where(users_table.c.email == email)).mappings().first()
             if user_row["status"] != "Active":
                 return -1
-        payload = {"id": user_row["id"], "status": user_row["status"], "username": user_row["username"]}
+        payload = {"id": str(user_row["id"]), "status": user_row["status"], "username": user_row["username"]}
         payload["exp"] = datetime.utcnow() + timedelta(hours=2)
         return jwt.encode(payload, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
     else:
@@ -80,3 +78,8 @@ def decode_token(token: str):
     except Exception as e:
         print(e)
         return None
+
+def verify_age(birthdate: date):
+    today = datetime.today()
+    age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+    return age >= 18
