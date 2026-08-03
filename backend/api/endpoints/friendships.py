@@ -9,38 +9,38 @@ router = APIRouter(prefix="/friendships", tags=["friendships"])
 
 
 @router.post("/send_request")
-def send_request(friendship: Annotated[Friendships, Body()], user: Annotated[dict, Depends(verify_token)]):
+async def send_request(friendship: Annotated[Friendships, Body()], user: Annotated[dict, Depends(verify_token)]):
     if friendship.sender_id != user.get("id"):
         raise HTTPException(status_code=403, detail="You are not authorized to send a friendship request for this user")
-    send_friendship_request(friendship)
+    await send_friendship_request(friendship)
     return {"message": "Friendship request sent successfully"}
 
 @router.post("/accept_request")
-def accept_request(friendship: Annotated[Friendships_short, Body()], user: Annotated[dict, Depends(verify_token)]):
+async def accept_request(friendship: Annotated[Friendships_short, Body()], user: Annotated[dict, Depends(verify_token)]):
     if friendship.receiver_id != user.get("id"):
         raise HTTPException(status_code=403, detail="You are not authorized to accept a friendship request for this user")
     try:
-        accept_friendship_request(friendship.sender_id, friendship.receiver_id)
+        await accept_friendship_request(friendship.sender_id, friendship.receiver_id)
         return {"message": "Friendship request accepted successfully"}
     except FriendRequestNotFound:
         raise HTTPException(status_code=404, detail="Friendship request not found")
 
 @router.post("/reject_request")
-def reject_request(friendship: Annotated[Friendships_short, Body()], user: Annotated[dict, Depends(verify_token)]):
+async def reject_request(friendship: Annotated[Friendships_short, Body()], user: Annotated[dict, Depends(verify_token)]):
     if friendship.receiver_id != user.get("id"):
         raise HTTPException(status_code=403, detail="You are not authorized to reject a friendship request for this user")
     try:
-        reject_friendship_request(friendship.sender_id, friendship.receiver_id)
+        await reject_friendship_request(friendship.sender_id, friendship.receiver_id)
         return {"message": "Friendship request rejected successfully"}
     except FriendRequestNotFound:
         raise HTTPException(status_code=404, detail="Friendship request not found")
 
 @router.post("/block")
-def block_friendship_endpoint(blocked: Annotated[blocked_friendships, Body()], user: Annotated[dict, Depends(verify_token)]):
+async def block_friendship_endpoint(blocked: Annotated[blocked_friendships, Body()], user: Annotated[dict, Depends(verify_token)]):
     if blocked.blocker_id != user.get("id"):
         raise HTTPException(status_code=403, detail="You are not authorized to block this user")
     try:
-        block_friendship(blocked.blocker_id, blocked.blocked_id)
+        await block_friendship(blocked.blocker_id, blocked.blocked_id)
         return {"message": "User blocked successfully"}
     except SelfBlockError:
         raise HTTPException(status_code=400, detail="You cannot block yourself")
@@ -48,11 +48,11 @@ def block_friendship_endpoint(blocked: Annotated[blocked_friendships, Body()], u
         raise HTTPException(status_code=400, detail="Friendship already blocked")
 
 @router.post("/unblock")
-def unblock_friendship_endpoint(blocked: Annotated[blocked_friendships_short, Body()], user: Annotated[dict, Depends(verify_token)]):
+async def unblock_friendship_endpoint(blocked: Annotated[blocked_friendships_short, Body()], user: Annotated[dict, Depends(verify_token)]):
     if blocked.blocker_id != user.get("id"):
         raise HTTPException(status_code=403, detail="You are not authorized to unblock this user")
     try:
-        unblock_friendship(blocked.blocker_id, blocked.blocked_id)
+        await unblock_friendship(blocked.blocker_id, blocked.blocked_id)
         return {"message": "User unblocked successfully"}
     except SelfBlockError:
         raise HTTPException(status_code=400, detail="You cannot unblock yourself")

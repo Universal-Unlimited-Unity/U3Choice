@@ -6,7 +6,8 @@ from schemas.friendships_schema import Friendships
 from datetime import datetime, timezone
 from models.friendships_model import blocked_friendships_table
 from exceptions import FriendRequestNotFound, FriendshipAlreadyBlocked, FriendshipNotBlocked, SelfBlockError
-def check_friendship_status(user1_id: UUID, user2_id: UUID) -> bool:
+
+async def check_friendship_status(user1_id: UUID, user2_id: UUID) -> bool:
     with eng.begin() as conn:
         stmt = select(1).where(
             friendships_table.c.status == "Accepted",
@@ -28,7 +29,7 @@ def check_friendship_status(user1_id: UUID, user2_id: UUID) -> bool:
         return True
     return False
 
-def get_friends(user_id: UUID):
+async def get_friends(user_id: UUID):
     with eng.begin() as conn:
         stmt = select(
             Case(
@@ -42,7 +43,7 @@ def get_friends(user_id: UUID):
         result = conn.execute(stmt).scalars().all()
     return result
 
-def check_friendship_request_exists(sender_id: UUID, receiver_id: UUID) -> bool:
+async def check_friendship_request_exists(sender_id: UUID, receiver_id: UUID) -> bool:
     if sender_id == receiver_id:
         return False
     with eng.begin() as conn:
@@ -56,7 +57,7 @@ def check_friendship_request_exists(sender_id: UUID, receiver_id: UUID) -> bool:
         return True
     return False
 
-def send_friendship_request(friendship: Friendships):
+async def send_friendship_request(friendship: Friendships):
     with eng.begin() as conn:
         dumped_friendship = friendship.model_dump()
         conn.execute(insert(friendships_table).values(dumped_friendship))
@@ -65,7 +66,7 @@ def send_friendship_request(friendship: Friendships):
     if redis.exists(f"user:session:{friendship.receiver_id}:{friendship.sender_id}"):
         redis.delete(f"user:session:{friendship.receiver_id}:{friendship.sender_id}")
 
-def accept_friendship_request(sender_id: UUID, receiver_id: UUID):
+async def accept_friendship_request(sender_id: UUID, receiver_id: UUID):
     with eng.begin() as conn:
         stmt = select(1).where(
             friendships_table.c.sender_id == sender_id,
@@ -88,7 +89,7 @@ def accept_friendship_request(sender_id: UUID, receiver_id: UUID):
     if redis.exists(f"user:session:{receiver_id}:{sender_id}"):
         redis.delete(f"user:session:{receiver_id}:{sender_id}")
 
-def reject_friendship_request(sender_id: UUID, receiver_id: UUID):
+async def reject_friendship_request(sender_id: UUID, receiver_id: UUID):
     with eng.begin() as conn:
         stmt = select(1).where(
             friendships_table.c.sender_id == sender_id,
@@ -111,7 +112,7 @@ def reject_friendship_request(sender_id: UUID, receiver_id: UUID):
     if redis.exists(f"user:session:{receiver_id}:{sender_id}"):
         redis.delete(f"user:session:{receiver_id}:{sender_id}")
 
-def is_blocked_friendship_exists(user1_id: UUID, user2_id: UUID) -> bool:
+async def is_blocked_friendship_exists(user1_id: UUID, user2_id: UUID) -> bool:
     with eng.begin() as conn:
         stmt = select(1).where(
             ((blocked_friendships_table.c.blocker_id == user1_id) &
@@ -124,7 +125,7 @@ def is_blocked_friendship_exists(user1_id: UUID, user2_id: UUID) -> bool:
         return True
     return False
 
-def block_friendship(blocker_id: UUID, blocked_id: UUID):
+async def block_friendship(blocker_id: UUID, blocked_id: UUID):
     if blocker_id == blocked_id:
         raise SelfBlockError("Cannot block yourself")
     with eng.begin() as conn:
@@ -151,7 +152,7 @@ def block_friendship(blocker_id: UUID, blocked_id: UUID):
     if redis.exists(f"user:session:{blocked_id}:{blocker_id}"):
         redis.delete(f"user:session:{blocked_id}:{blocker_id}")
     
-def unblock_friendship(blocker_id: UUID, blocked_id: UUID):
+async def unblock_friendship(blocker_id: UUID, blocked_id: UUID):
     if blocker_id == blocked_id:
         raise SelfBlockError("Cannot unblock yourself")
     with eng.begin() as conn:

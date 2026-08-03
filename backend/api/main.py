@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
     metadata.drop_all(eng)
     print("Shutting down...")
 
-app = FastAPI(title="Social Media API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="U3Choice API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,5 +1,5 @@
 from database import eng
-from sqlalchemy import select, insert
+from sqlalchemy import select, insert, update
 from models.user_model import users_table
 from password_validator import PasswordValidator
 from schemas.users_schema import User
@@ -24,7 +24,16 @@ def verify_token(token: str = Depends(oauth2_scheme)):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
     
-    
+
+def generate_token(email: str):
+    with eng.begin() as conn:
+        user_row = conn.execute(select(users_table).where(users_table.c.email == email)).mappings().first()
+        if user_row["status"] != "Active":
+            return -1
+        payload = {"id": str(user_row["id"]), "status": user_row["status"], "username": user_row["username"]}
+        payload["exp"] = datetime.utcnow() + timedelta(hours=1)
+        return jwt.encode(payload, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
+        
 def username_used(username: str):
     with eng.connect() as conn:
         stmt = select(users_table).where(users_table.c.username == username)
@@ -53,7 +62,7 @@ def signup(user: User):
 def hash_pwd(pwd_plain: str):
     return pwd_hash.hash(pwd_plain)
 
-def signin(email: EmailStr, pwd: str):
+def signin(email: EmailStr, pwd: str, last_login: datetime):
     with eng.begin() as conn:
         real_pwd = conn.execute(select(users_table.c.pwd_hash).where(users_table.c.email == email)).scalar()
         if not real_pwd:
@@ -61,19 +70,16 @@ def signin(email: EmailStr, pwd: str):
     if pwd_hash.verify(pwd, real_pwd):
         # Generate User's Token
         with eng.begin() as conn:
-            user_row = conn.execute(select(users_table).where(users_table.c.email == email)).mappings().first()
-            if user_row["status"] != "Active":
-                return -1
-        payload = {"id": str(user_row["id"]), "status": user_row["status"], "username": user_row["username"]}
-        payload["exp"] = datetime.utcnow() + timedelta(hours=2)
-        return jwt.encode(payload, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
+            stmt = update(users_table).where(users_table.c.email == email).values(last_login=last_login)
+            conn.execute(stmt)
+        return generate_token(email)
     else:
         return None
 
 
 def decode_token(token: str):
     try:
-        payload = jwt.decode(token, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
+        payload = jwt.decode(token, settings.TOKEN_KEY, algorithms=settings.TOKEN_ALGO)
         return payload
     except Exception as e:
         print(e)

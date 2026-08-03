@@ -21,7 +21,7 @@ async def signup_endpoint(user: Annotated[User, Body()]):
 
 @auth_router.post("/signin")
 async def signin_endpoint(credentials: Annotated[credentials, Body()]):
-    token = signin(credentials.email, credentials.pwd)
+    token = signin(credentials.email, credentials.pwd, credentials.last_login)
     if not token:
         raise HTTPException(status_code=400, detail="INVALID_CREDENTIALS")
     if token == -1:
