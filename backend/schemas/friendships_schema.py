@@ -6,6 +6,7 @@ from enum import Enum
 class Status(str, Enum):    
     Pending = 'Pending'
     Accepted = 'Accepted'
+    Blocked = 'Blocked'
 
 class Friendships(BaseModel):
     sender_id: UUID

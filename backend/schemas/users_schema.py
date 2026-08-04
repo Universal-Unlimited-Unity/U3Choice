@@ -69,7 +69,6 @@ class User_Update(BaseModel):
     username: str | None = None
     name: str | None = None
     bio: str | None = Field(max_length=50, default=None)
-    photo_url: str | None = None
     country: str | None = Field(max_length=2, default=None)
     gender: Gender | None = None
     dob: date | None = None
@@ -77,3 +76,15 @@ class User_Update(BaseModel):
     
 class Request_ID(BaseModel):
     id: UUID
+
+class old_pwd(BaseModel):
+    old_pwd: str
+
+class new_pwd(BaseModel):
+    new_pwd: str
+    
+class new_email(BaseModel):
+    new_email: EmailStr
+
+class new_phone(BaseModel):
+    new_phone: PhoneNumber

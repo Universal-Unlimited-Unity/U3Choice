@@ -146,6 +146,14 @@ async def block_friendship(blocker_id: UUID, blocked_id: UUID):
             created_at=datetime.now(timezone.utc)
         )
         conn.execute(stmt)
+    with eng.begin() as conn:
+        stmt = friendships_table.delete().where(
+            ((friendships_table.c.sender_id == blocker_id) &
+            (friendships_table.c.receiver_id == blocked_id)) |
+            ((friendships_table.c.sender_id == blocked_id) &
+            (friendships_table.c.receiver_id == blocker_id))
+        )
+        conn.execute(stmt)
     
     if redis.exists(f"user:session:{blocker_id}:{blocked_id}"):
         redis.delete(f"user:session:{blocker_id}:{blocked_id}")

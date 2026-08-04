@@ -25,9 +25,18 @@ def verify_token(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="Invalid token")
     
 
-def generate_token(email: str):
+def generate_token_by_email(email: str):
     with eng.begin() as conn:
         user_row = conn.execute(select(users_table).where(users_table.c.email == email)).mappings().first()
+        if user_row["status"] != "Active":
+            return -1
+        payload = {"id": str(user_row["id"]), "status": user_row["status"], "username": user_row["username"]}
+        payload["exp"] = datetime.utcnow() + timedelta(hours=1)
+        return jwt.encode(payload, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
+    
+def generate_token_by_username(username: str):
+    with eng.begin() as conn:
+        user_row = conn.execute(select(users_table).where(users_table.c.username == username)).mappings().first()
         if user_row["status"] != "Active":
             return -1
         payload = {"id": str(user_row["id"]), "status": user_row["status"], "username": user_row["username"]}
@@ -72,7 +81,7 @@ def signin(email: EmailStr, pwd: str, last_login: datetime):
         with eng.begin() as conn:
             stmt = update(users_table).where(users_table.c.email == email).values(last_login=last_login)
             conn.execute(stmt)
-        return generate_token(email)
+        return generate_token_by_email(email)
     else:
         return None
 

@@ -376,11 +376,14 @@
                         <div class="action-bar">
                             {#if profileData.is_owner}
                                 <button class="btn-secondary">Edit Profile</button>
+                                <button class="btn-secondary">Edit Photo</button>
+                                <button class="btn-secondary">Edit Profile</button>
                             {:else if profileData.is_blocked}
                                 <button class="btn-secondary" disabled>Unblocked</button>
                             {:else if profileData.is_friends}
                                 <button class="btn-secondary">Remove Friend</button>
                                 <button class="btn-secondary">Send Message</button>
+                                <button class="btn-secondary">Block Friend</button>
                             {:else if profileData.has_sent_friendship_request}
                                 <button class="btn-secondary" disabled>Accept Request</button>
                                 <button class="btn-secondary" disabled>Reject Request</button>
