@@ -1,6 +1,6 @@
 from database import metadata
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Table, Column, String, Boolean, DateTime, Date
+from sqlalchemy import Table, Column, String, Boolean, DateTime, Date, Index
 
 
 users_table = Table(
@@ -22,5 +22,14 @@ users_table = Table(
     Column("country", String(2), nullable=False),
     Column("email_verified", Boolean, nullable=False),
     Column("phone", String, nullable=False),
-    Column("gender", String, nullable=False)
+    Column("gender", String, nullable=False),
+    Index("ix_users_username_trigram",
+          "username", 
+          postgresql_using="gin",
+          postgresql_ops={"username": "gin_trgm_ops"}),
+    Index("ix_users_name_trigram",
+          "name", 
+          postgresql_using="gin", 
+          postgresql_ops={"name": "gin_trgm_ops"})
+
 )

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from .endpoints.authentification import auth_router
 from .endpoints.users import router as users_router
 from .endpoints.friendships import router as friendships_router
+from .endpoints.search_engine import search_router
 from database import metadata, eng
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +13,6 @@ async def lifespan(app: FastAPI):
     print("Starting up...")
     metadata.create_all(eng, checkfirst=True)
     yield
-    metadata.drop_all(eng)
     print("Shutting down...")
 
 app = FastAPI(title="U3Choice API", version="1.0.0", lifespan=lifespan)
@@ -20,7 +20,6 @@ app = FastAPI(title="U3Choice API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
         "http://localhost:5173",
     ],
     allow_credentials=True,
@@ -31,3 +30,4 @@ app.add_middleware(
 app.include_router(users_router)
 app.include_router(friendships_router)
 app.include_router(auth_router)
+app.include_router(search_router)

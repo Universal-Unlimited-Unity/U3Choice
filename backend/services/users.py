@@ -1,4 +1,4 @@
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from .authentification import generate_token_by_username
 from database import eng
 from models.user_model import users_table
