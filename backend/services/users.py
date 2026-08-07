@@ -26,7 +26,7 @@ async def get_friends_brief(user_id: UUID):
     friends = await get_friends(user_id)
     with eng.begin() as conn:
         stmt = select(users_table.c.id, users_table.c.username, users_table.photo_url, 
-                      users_table.c.name, users_table.c.country).where(users_table.c.id.in_(friends))
+                      users_table.c.name, users_table.c.country).where(users_table.c.id.in_(friends), users_table.c.status == "Active")
         result = conn.execute(stmt).mappings().all()
     return result
 

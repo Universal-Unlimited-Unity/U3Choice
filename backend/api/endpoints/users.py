@@ -19,6 +19,11 @@ async def read_user_profile(username: Annotated[str, Path()], user: Annotated[di
     viwer_id = user.get("id")
     if user.get("status") != "Active":
         raise HTTPException(status_code=403, detail="Your account is suspended")
+    requested_profile = await get_user_profile_BY_USERNAME(username)
+    if not requested_profile:
+        raise HTTPException(status_code=404, detail="User not found")
+    if requested_profile.status != "Active":
+        raise HTTPException(status_code=403, detail="User is suspended")
     cashed_profile = redis.get(f"user:session:{viwer_id}:{username}")
     if cashed_profile:
             return json.loads(cashed_profile)
@@ -49,7 +54,7 @@ async def read_user_profile(username: Annotated[str, Path()], user: Annotated[di
     redis.sadd(f"profile_view_cache:{username}", f"user:session:{viwer_id}:{username}")    
     return profile_view
 
-@router.get("/{username}/friends", response_model=UserSummary)
+@router.get("/{username}/friends", response_model=dict[str, any])
 async def read_user_friends(username: Annotated[str, Path()], user: Annotated[dict, Depends(verify_token)]):
     if username != user.get("username"):
         raise HTTPException(status_code=403, detail="You are not authorized to view this user's friends")
@@ -63,9 +68,11 @@ async def read_user_friends(username: Annotated[str, Path()], user: Annotated[di
         raise HTTPException(status_code=403, detail="User is suspended")
     if requested_profile.id != viwer_id:
         raise HTTPException(status_code=403, detail="You are not authorized to view this user's friends")
-    
+    if redis.exists(f"user:session:friends:{username}"):
+        return json.loads(redis.get(f"user:session:friends:{username}"))
     friends_brief = await get_friends_brief(requested_profile.id)
-    return friends_brief
+    redis.set(f"user:session:friends:{username}", json.dumps(friends_brief), ex=3600)
+    return {"friends": friends_brief, "total_friends": len(friends_brief)}
 
 @router.get("/{username}/photo")
 async def get_profile_photo_endpoint(username: Annotated[str, Path()], user: Annotated[dict, Depends(verify_token)]):
@@ -118,7 +125,7 @@ async def update_user_profile_photo_endpoint(username: Annotated[str, Path()], p
             "message": "Profile photo updated successfully"}
     
 
-@router.get("/Settings/password")
+@router.post("/settings/password")
 async def get_user_settings(old_pwd: Annotated[old_pwd, Body()], new_pwd: Annotated[new_pwd, Body()], user: Annotated[dict, Depends(verify_token)]):    
     if user.get("status") != "Active":
         raise HTTPException(status_code=403, detail="Your account is suspended")
@@ -134,7 +141,7 @@ async def get_user_settings(old_pwd: Annotated[old_pwd, Body()], new_pwd: Annota
     await change_pwd(user.get("id"), old_pwd.old_pwd, new_pwd.new_pwd)
     return {"message": "Password changed successfully"}
 
-@router.get("/Settings/email")
+@router.post("/settings/email")
 async def get_user_settings_email(new_email: Annotated[new_email, Body()], user: Annotated[dict, Depends(verify_token)]):    
     if user.get("status") != "Active":
         raise HTTPException(status_code=403, detail="Your account is suspended")
@@ -144,7 +151,7 @@ async def get_user_settings_email(new_email: Annotated[new_email, Body()], user:
     await change_email(user.get("id"), new_email.new_email)
     return {"message": "Email changed successfully"}
 
-@router.get("/Settings/phone")
+@router.post("/settings/phone")
 async def get_user_settings_phone(new_phone: Annotated[new_phone, Body()], user: Annotated[dict, Depends(verify_token)]):    
     if user.get("status") != "Active":
         raise HTTPException(status_code=403, detail="Your account is suspended")

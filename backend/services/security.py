@@ -11,7 +11,13 @@ async def refresh_user_cashe(username: str):
         for key in cashed_keys:
             redis.delete(key)
         redis.delete(f"profile_view_cache:{username}")
+    if redis.exists(f"user:session:{username}"):
+        redis.delete(f"user:session:{username}")
 
+async def refresh_user_friends_cashe(username: str):
+    if redis.exists(f"user:session:{username}"):
+            redis.delete(f"user:session:{username}")
+            
 async def verify_pwd(user_id: str, pwd: str) -> bool:
     with eng.begin() as conn:
         stmt = select(users_table.c.pwd_hash).where(users_table.c.id == user_id)

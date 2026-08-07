@@ -6,6 +6,8 @@ from schemas.friendships_schema import Friendships
 from datetime import datetime, timezone
 from models.friendships_model import blocked_friendships_table
 from exceptions import FriendRequestNotFound, FriendshipAlreadyBlocked, FriendshipNotBlocked, SelfBlockError
+from .security import refresh_user_friends_cashe
+from .users import get_user_profile_BY_ID
 
 async def check_friendship_status(user1_id: UUID, user2_id: UUID) -> bool:
     with eng.begin() as conn:
@@ -76,6 +78,10 @@ async def accept_friendship_request(sender_id: UUID, receiver_id: UUID):
         result = conn.execute(stmt).first()
     if not result:
         raise FriendRequestNotFound("Friendship request not found")
+    user1_profile = await get_user_profile_BY_ID(sender_id)
+    user2_profile = await get_user_profile_BY_ID(receiver_id)
+    await refresh_user_friends_cashe(user1_profile.username)
+    await refresh_user_friends_cashe(user2_profile.username)
 
     with eng.begin() as conn:
         stmt = friendships_table.update().where(
@@ -159,7 +165,11 @@ async def block_friendship(blocker_id: UUID, blocked_id: UUID):
         redis.delete(f"user:session:{blocker_id}:{blocked_id}")
     if redis.exists(f"user:session:{blocked_id}:{blocker_id}"):
         redis.delete(f"user:session:{blocked_id}:{blocker_id}")
-    
+    user1_profile = await get_user_profile_BY_ID(blocker_id)
+    user2_profile = await get_user_profile_BY_ID(blocked_id)
+    await refresh_user_friends_cashe(user1_profile.username)
+    await refresh_user_friends_cashe(user2_profile.username)
+
 async def unblock_friendship(blocker_id: UUID, blocked_id: UUID):
     if blocker_id == blocked_id:
         raise SelfBlockError("Cannot unblock yourself")
@@ -187,4 +197,37 @@ async def unblock_friendship(blocker_id: UUID, blocked_id: UUID):
         redis.delete(f"user:session:{blocker_id}:{blocked_id}")
     if redis.exists(f"user:session:{blocked_id}:{blocker_id}"):
         redis.delete(f"user:session:{blocked_id}:{blocker_id}")
+    user1_profile = await get_user_profile_BY_ID(blocker_id)
+    user2_profile = await get_user_profile_BY_ID(blocked_id)
+    await refresh_user_friends_cashe(user1_profile.username)
+    await refresh_user_friends_cashe(user2_profile.username)
 
+async def remove_friendship(friendship: Friendships):
+    with eng.begin() as conn:
+        stmt = select(1).where(
+            ((friendships_table.c.sender_id == friendship.sender_id) &
+            (friendships_table.c.receiver_id == friendship.receiver_id)) |
+            ((friendships_table.c.sender_id == friendship.receiver_id) &
+            (friendships_table.c.receiver_id == friendship.sender_id))
+        )
+        result = conn.execute(stmt).first()
+    if not result:
+        raise FriendRequestNotFound("Friendship not found")
+    
+    with eng.begin() as conn:
+        stmt = friendships_table.delete().where(
+            ((friendships_table.c.sender_id == friendship.sender_id) &
+            (friendships_table.c.receiver_id == friendship.receiver_id)) |
+            ((friendships_table.c.sender_id == friendship.receiver_id) &
+            (friendships_table.c.receiver_id == friendship.sender_id))
+        )
+        conn.execute(stmt)
+    
+    if redis.exists(f"user:session:{friendship.sender_id}:{friendship.receiver_id}"):
+        redis.delete(f"user:session:{friendship.sender_id}:{friendship.receiver_id}")
+    if redis.exists(f"user:session:{friendship.receiver_id}:{friendship.sender_id}"):
+        redis.delete(f"user:session:{friendship.receiver_id}:{friendship.sender_id}")
+    user1_profile = await get_user_profile_BY_ID(friendship.sender_id)
+    user2_profile = await get_user_profile_BY_ID(friendship.receiver_id)    
+    await refresh_user_friends_cashe(user1_profile.username)
+    await refresh_user_friends_cashe(user2_profile.username)

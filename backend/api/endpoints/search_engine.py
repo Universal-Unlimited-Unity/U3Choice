@@ -13,7 +13,7 @@ class UserSearchResult(TypedDict):
     photo_url: str
     
 @search_router.get("/users", response_model=list[UserSearchResult])
-async def search_users(keyword: Annotated[str, Query(min_length=1)], user: Annotated[dict[str, str], Depends(verify_token)]):
+async def search_users(keyword: Annotated[str, Query(min_length=1)], limit: Annotated[int, Query(ge=1, le=100)], user: Annotated[dict[str, str], Depends(verify_token)]):
     if user.get("status") != "Active":
         raise HTTPException(status_code=403, detail="Your account is suspended")
     user_id = user.get("id")
@@ -21,7 +21,7 @@ async def search_users(keyword: Annotated[str, Query(min_length=1)], user: Annot
     if not userprofile:
         raise HTTPException(status_code=404, detail="An error occurred while searching for users")
     SE = SearchEngine(keyword)
-    results = await SE.SearchForUsers()
+    results = await SE.SearchForUsers(limit)
     if not results:
         raise HTTPException(status_code=404, detail="No users found")
-    return results
+    return {"results": results}
