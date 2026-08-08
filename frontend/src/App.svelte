@@ -1,13 +1,26 @@
 <script>
     import { signup, signin } from "./lib/api/auth";
-    import { getProfile } from "./lib/api/users";
+    import { 
+        getProfile, 
+        updateProfile, 
+        updateProfilePhoto, 
+        getfriends 
+    } from "./lib/api/users";
+    import { searchUsers } from "./lib/api/search_engine";
+    import { 
+        sendFriendRequest, 
+        acceptFriendRequest, 
+        rejectFriendRequest, 
+        removeFriendship, 
+        BlockFriend, 
+        UnblockFriend 
+    } from "./lib/api/friendships";
     import { fetchParseHandlerForFiles } from "./lib/api/http";
     import CountryData from "country-list-with-dial-code-and-flag";
     import logo from "./assets/logo.png";
 
     const API_URL = import.meta.env.VITE_API_URL;
 
-    // Handle CJS/ESM module wrapper differences in Vite
     const rawCountries = Array.isArray(CountryData) 
         ? CountryData 
         : (CountryData?.default || []);
@@ -19,7 +32,6 @@
 
     let mode = "signin";
 
-    // Selection states
     let selectedCountry = countries.find(c => c.code === "US") || countries[0];
     let selectedPhonePrefix = selectedCountry?.dial_code || "+1";
     let rawPhoneNumber = "";
@@ -49,18 +61,43 @@
     let token = localStorage.getItem("token");
 
     // Authenticated App State
-    let activeTab = "profile"; // "home", "search", "profile"
+    let activeTab = "profile";
     let profileData = null;
     let profilePhotoUrl = null;
     let loadingProfile = false;
+    
+    // Tracks the specific profile currently being viewed (null = logged-in user)
+    let activeProfileUsername = null; 
 
-    // Searchable dropdown state
+    // Search Feature State
+    let searchQuery = "";
+    let searchResults = [];
+    let isSearching = false;
+
+    // Friends Feature State
+    let friendsList = [];
+    let totalFriends = 0;
+    let loadingFriends = false;
+
+    // Edit Profile Modal State
+    let isEditModalOpen = false;
+    let isPhotoModalOpen = false;
+    let photoFile = null;
+
+    let editForm = {
+        username: "",
+        name: "",
+        bio: "",
+        country: "",
+        gender: "",
+        dob: ""
+    };
+
     let phoneDropdownOpen = false;
     let countryDropdownOpen = false;
     let phoneSearch = "";
     let countrySearch = "";
 
-    // Reactive search filters
     $: filteredPhoneCountries = countries.filter(c => 
         c.name.toLowerCase().includes(phoneSearch.toLowerCase()) ||
         c.dial_code.includes(phoneSearch) ||
@@ -72,7 +109,6 @@
         c.code.toLowerCase().includes(countrySearch.toLowerCase())
     );
 
-    // Decode JWT Payload safely without external packages
     function getPayloadFromToken(jwtToken) {
         if (!jwtToken) return null;
         try {
@@ -88,46 +124,60 @@
         }
     }
 
-    // Unified function to fetch any profile by username
+    function getMyUsername() {
+        const payload = getPayloadFromToken(token);
+        return payload?.username || null;
+    }
+
     async function fetchUserProfile(targetUsername = null) {
         if (!token) return;
 
-        // If no target provided, default to logged-in user's username from JWT
-        let usernameToFetch = targetUsername;
+        if (targetUsername) {
+            activeProfileUsername = targetUsername;
+        } else if (!activeProfileUsername) {
+            activeProfileUsername = getMyUsername();
+        }
+
+        const usernameToFetch = activeProfileUsername;
+
         if (!usernameToFetch) {
-            const payload = getPayloadFromToken(token);
-            if (!payload || !payload.username) {
-                error = "Invalid or expired session. Please sign in again.";
-                logout();
-                return;
-            }
-            usernameToFetch = payload.username;
+            error = "Invalid or expired session. Please sign in again.";
+            logout();
+            return;
         }
 
         loadingProfile = true;
         error = "";
 
         try {
-            // Fetch profile data from backend API
             const data = await getProfile(token, usernameToFetch);
             profileData = data;
+            
+            editForm = {
+                username: data.username || "",
+                name: data.name || "",
+                bio: data.bio || "",
+                country: data.country || "US",
+                gender: data.gender || "",
+                dob: data.dob || ""
+            };
 
-            // Fetch profile picture blob
             await fetchPhoto(usernameToFetch);
         } catch (err) {
             console.error("Error loading profile:", err);
-            error = "Failed to load profile details.";
+            error = err?.detail || "Failed to load profile details.";
         } finally {
             loadingProfile = false;
         }
     }
 
     async function fetchPhoto(username) {
+        if (!username) return;
         try {
-            const blob = await fetchParseHandlerForFiles(`${API_URL}/${username}/photo`, {
-                headers: {
-                    "Authorization": `Bearer ${token}`
-                }
+            // Append timestamp to bypass browser blob caching on photo update
+            const timestamp = new Date().getTime();
+            const blob = await fetchParseHandlerForFiles(`${API_URL}/${username}/photo?t=${timestamp}`, {
+                headers: { "Authorization": `Bearer ${token}` }
             });
             if (blob) {
                 if (profilePhotoUrl) URL.revokeObjectURL(profilePhotoUrl);
@@ -141,9 +191,194 @@
         }
     }
 
-    // Automatically load profile on activeTab change to 'profile'
+    function viewUserProfile(targetUsername) {
+        if (!targetUsername) return;
+        activeProfileUsername = targetUsername;
+        profileData = null;
+        activeTab = "profile";
+        fetchUserProfile(targetUsername);
+    }
+
+    function viewMyProfile() {
+        const myUsername = getMyUsername();
+        activeProfileUsername = myUsername;
+        profileData = null;
+        activeTab = "profile";
+        fetchUserProfile(myUsername);
+    }
+
+    async function handleSearch() {
+        if (!searchQuery.trim()) return;
+        isSearching = true;
+        error = "";
+
+        try {
+            const results = await searchUsers(token, searchQuery, 10);
+            searchResults = results || [];
+        } catch (err) {
+            console.error("Search failed:", err);
+            searchResults = [];
+            error = err?.detail || "No users found.";
+        } finally {
+            isSearching = false;
+        }
+    }
+
+    async function fetchFriendsList() {
+        if (!token) return;
+        const myUsername = getMyUsername();
+        if (!myUsername) return;
+
+        loadingFriends = true;
+        try {
+            const res = await getfriends(token, myUsername);
+            friendsList = res.friends || [];
+            totalFriends = res.total_friends || 0;
+        } catch (err) {
+            console.error("Error fetching friends:", err);
+        } finally {
+            loadingFriends = false;
+        }
+    }
+
+    async function handleSendRequest() {
+        const payload = getPayloadFromToken(token);
+        try {
+            await sendFriendRequest(token, {
+                sender_id: payload.id,
+                receiver_id: profileData.viwed_id
+            });
+            await fetchUserProfile(profileData.username);
+        } catch (err) {
+            error = err?.detail || "Could not send friend request.";
+        }
+    }
+
+    async function handleAcceptRequest() {
+        const payload = getPayloadFromToken(token);
+        try {
+            await acceptFriendRequest(token, {
+                sender_id: profileData.viwed_id,
+                receiver_id: payload.id
+            });
+            await fetchUserProfile(profileData.username);
+        } catch (err) {
+            error = err?.detail || "Could not accept friend request.";
+        }
+    }
+
+    async function handleRejectRequest() {
+        const payload = getPayloadFromToken(token);
+        try {
+            await rejectFriendRequest(token, {
+                sender_id: profileData.viwed_id,
+                receiver_id: payload.id
+            });
+            await fetchUserProfile(profileData.username);
+        } catch (err) {
+            error = err?.detail || "Could not reject friend request.";
+        }
+    }
+
+    async function handleRemoveFriendship() {
+        const payload = getPayloadFromToken(token);
+        try {
+            await removeFriendship(token, {
+                sender_id: payload.id,
+                receiver_id: profileData.viwed_id
+            });
+            await fetchUserProfile(profileData.username);
+        } catch (err) {
+            error = err?.detail || "Could not remove friend.";
+        }
+    }
+
+    async function handleBlockUser() {
+        const payload = getPayloadFromToken(token);
+        try {
+            await BlockFriend(token, {
+                blocker_id: payload.id,
+                blocked_id: profileData.viwed_id
+            });
+            await fetchUserProfile(profileData.username);
+        } catch (err) {
+            error = err?.detail || "Could not block user.";
+        }
+    }
+
+    async function handleUnblockUser() {
+        const payload = getPayloadFromToken(token);
+        try {
+            await UnblockFriend(token, {
+                blocker_id: payload.id,
+                blocked_id: profileData.viwed_id
+            });
+            await fetchUserProfile(profileData.username);
+        } catch (err) {
+            error = err?.detail || "Could not unblock user.";
+        }
+    }
+
+    async function handleUpdateProfile() {
+        const myUsername = getMyUsername();
+        if (!myUsername) return;
+
+        try {
+            const updatePayload = {};
+            if (editForm.username && editForm.username !== myUsername) updatePayload.username = editForm.username;
+            if (editForm.name) updatePayload.name = editForm.name;
+            if (editForm.bio !== undefined) updatePayload.bio = editForm.bio;
+            if (editForm.country) updatePayload.country = editForm.country;
+            if (editForm.gender) updatePayload.gender = editForm.gender;
+            if (editForm.dob) updatePayload.dob = editForm.dob;
+
+            const res = await updateProfile(token, myUsername, updatePayload);
+            
+            // SAVE AND REPLACE JWT TOKEN IMMEDIATELY
+            if (res?.token) {
+                token = res.token;
+                localStorage.setItem("token", token);
+            }
+
+            isEditModalOpen = false;
+            const updatedUsername = updatePayload.username || myUsername;
+            activeProfileUsername = updatedUsername;
+            await fetchUserProfile(updatedUsername);
+        } catch (err) {
+            error = err?.detail || "Failed to update profile.";
+        }
+    }
+
+    async function handleUpdatePhoto() {
+        if (!photoFile) return;
+        const myUsername = getMyUsername();
+        if (!myUsername) return;
+
+        try {
+            const res = await updateProfilePhoto(token, myUsername, photoFile);
+            
+            // SAVE AND REPLACE JWT TOKEN IMMEDIATELY
+            if (res?.token) {
+                token = res.token;
+                localStorage.setItem("token", token);
+            }
+
+            isPhotoModalOpen = false;
+            photoFile = null;
+
+            // Re-fetch profile and fresh photo blob
+            await fetchUserProfile(myUsername);
+        } catch (err) {
+            error = err?.detail || "Failed to update profile photo.";
+        }
+    }
+
     $: if (token && activeTab === "profile" && !profileData && !loadingProfile) {
-        fetchUserProfile();
+        fetchUserProfile(activeProfileUsername || getMyUsername());
+    }
+
+    $: if (token && activeTab === "friends") {
+        fetchFriendsList();
     }
 
     function selectPhoneCountry(country) {
@@ -262,8 +497,7 @@
             token = data.token;
             localStorage.setItem("token", token);
             invalidFields = {};
-            activeTab = "profile";
-            fetchUserProfile();
+            viewMyProfile();
         } catch (err) {
             if (err?.detail === "INVALID_CREDENTIALS") {
                 error = "Invalid email or password.";
@@ -284,6 +518,7 @@
         token = null;
         profileData = null;
         profilePhotoUrl = null;
+        activeProfileUsername = null;
     }
 </script>
 
@@ -298,10 +533,8 @@
 <div class="container">
 
 {#if token}
-    <!-- Main Responsive Application Container -->
     <div class="app-screen">
 
-        <!-- Top Header showing context and persistent logout button -->
         <header class="top-nav">
             {#if activeTab === 'profile' && profileData}
                 <div class="username-header">
@@ -313,7 +546,9 @@
             {:else if activeTab === 'home'}
                 <h2>Feed</h2>
             {:else if activeTab === 'search'}
-                <h2>Explore</h2>
+                <h2>Explore Users</h2>
+            {:else if activeTab === 'friends'}
+                <h2>My Friends ({totalFriends})</h2>
             {:else}
                 <h2>Profile</h2>
             {/if}
@@ -321,27 +556,90 @@
             <button class="logout-link" on:click={logout}>Logout</button>
         </header>
 
-        <!-- Dynamic Main Views -->
         <main class="content-body">
+            {#if error}
+                <div class="error-banner">{error} <button on:click={() => error = ""}>×</button></div>
+            {/if}
+
             {#if activeTab === "home"}
                 <div class="empty-state">
                     <span class="icon">🏠</span>
                     <h3>Home Feed Unavailable</h3>
                     <p>No posts to display right now. Check back later!</p>
                 </div>
+
             {:else if activeTab === "search"}
-                <div class="empty-state">
-                    <span class="icon">🔍</span>
-                    <h3>Search Unavailable</h3>
-                    <p>User search features will be available in a future update.</p>
+                <div class="search-container">
+                    <form class="search-bar" on:submit|preventDefault={handleSearch}>
+                        <input 
+                            type="text" 
+                            placeholder="Search by name or @username..." 
+                            bind:value={searchQuery}
+                        />
+                        <button type="submit" disabled={isSearching}>
+                            {isSearching ? "..." : "Search"}
+                        </button>
+                    </form>
+
+                    {#if isSearching}
+                        <div class="loading-spinner">Searching users...</div>
+                    {:else if searchResults.length > 0}
+                        <div class="results-grid">
+                            {#each searchResults as user}
+                                <div class="user-card" on:click={() => viewUserProfile(user.username)}>
+                                    <div class="user-avatar-small">
+                                        {#if user.photo_url && user.photo_url !== 'assets/default_profile.png'}
+                                            <img src={`${API_URL}/${user.username}/photo`} alt={user.username} />
+                                        {:else}
+                                            <div class="avatar-placeholder-small">{user.name ? user.name[0].toUpperCase() : 'U'}</div>
+                                        {/if}
+                                    </div>
+                                    <div class="user-details">
+                                        <h4>{user.name}</h4>
+                                        <p>@{user.username}</p>
+                                    </div>
+                                </div>
+                            {/each}
+                        </div>
+                    {:else if searchQuery}
+                        <div class="empty-state">
+                            <span class="icon">🔍</span>
+                            <p>No user accounts matched your search keyword.</p>
+                        </div>
+                    {/if}
                 </div>
+
+            {:else if activeTab === "friends"}
+                {#if loadingFriends}
+                    <div class="loading-spinner">Loading friends...</div>
+                {:else if friendsList.length > 0}
+                    <div class="results-grid">
+                        {#each friendsList as friend}
+                            <div class="user-card" on:click={() => viewUserProfile(friend.username)}>
+                                <div class="user-avatar-small">
+                                    <div class="avatar-placeholder-small">{friend.name ? friend.name[0].toUpperCase() : 'U'}</div>
+                                </div>
+                                <div class="user-details">
+                                    <h4>{friend.name}</h4>
+                                    <p>@{friend.username}</p>
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+                {:else}
+                    <div class="empty-state">
+                        <span class="icon">👥</span>
+                        <h3>No Friends Yet</h3>
+                        <p>Search for friends and connect with them!</p>
+                    </div>
+                {/if}
+
             {:else if activeTab === "profile"}
                 {#if loadingProfile}
                     <div class="loading-spinner">Loading Profile...</div>
                 {:else if profileData}
                     <div class="profile-card">
 
-                        <!-- Photo & Identity Section -->
                         <div class="profile-header">
                             <div class="avatar-wrapper">
                                 {#if profilePhotoUrl}
@@ -365,42 +663,36 @@
                             </div>
                         </div>
 
-                        <!-- Bio Section -->
                         {#if profileData.bio}
                             <div class="bio-box">
                                 <p>{profileData.bio}</p>
                             </div>
                         {/if}
 
-                        <!-- Dynamic Action Button based on backend relational JSON -->
                         <div class="action-bar">
                             {#if profileData.is_owner}
-                                <button class="btn-secondary">Edit Profile</button>
-                                <button class="btn-secondary">Edit Photo</button>
-                                <button class="btn-secondary">Edit Profile</button>
+                                <button class="btn-secondary" on:click={() => isEditModalOpen = true}>Edit Profile</button>
+                                <button class="btn-secondary" on:click={() => isPhotoModalOpen = true}>Change Photo</button>
                             {:else if profileData.is_blocked}
-                                <button class="btn-secondary" disabled>Unblocked</button>
+                                <button class="btn-secondary" on:click={handleUnblockUser}>Unblock User</button>
                             {:else if profileData.is_friends}
-                                <button class="btn-secondary">Remove Friend</button>
-                                <button class="btn-secondary">Send Message</button>
-                                <button class="btn-secondary">Block Friend</button>
+                                <button class="btn-secondary danger" on:click={handleRemoveFriendship}>Remove Friend</button>
+                                <button class="btn-secondary" on:click={handleBlockUser}>Block User</button>
                             {:else if profileData.has_sent_friendship_request}
-                                <button class="btn-secondary" disabled>Accept Request</button>
-                                <button class="btn-secondary" disabled>Reject Request</button>
+                                <button class="btn-primary" on:click={handleAcceptRequest}>Accept Request</button>
+                                <button class="btn-secondary" on:click={handleRejectRequest}>Reject Request</button>
                             {:else if profileData.has_received_friendship_request}
-                                <button class="btn-primary">Remove Friend Request</button>
+                                <button class="btn-secondary" disabled>Friend Request Pending</button>
                             {:else}
-                                <button class="btn-primary">Add Friend</button>
+                                <button class="btn-primary" on:click={handleSendRequest}>Add Friend</button>
                             {/if}
                         </div>
-                        <div>JSON: {JSON.stringify(profileData, null, 2)}</div>
 
                     </div>
                 {/if}
             {/if}
         </main>
 
-        <!-- Bottom Navigation Bar -->
         <nav class="bottom-nav">
             <button 
                 class="nav-item" 
@@ -420,14 +712,65 @@
 
             <button 
                 class="nav-item" 
+                class:active={activeTab === 'friends'} 
+                on:click={() => activeTab = 'friends'}>
+                <span class="nav-icon">👥</span>
+                <span class="nav-label">Friends</span>
+            </button>
+
+            <button 
+                class="nav-item" 
                 class:active={activeTab === 'profile'} 
-                on:click={() => { activeTab = 'profile'; fetchUserProfile(); }}>
+                on:click={viewMyProfile}>
                 <span class="nav-icon">👤</span>
                 <span class="nav-label">Profile</span>
             </button>
         </nav>
 
     </div>
+
+    <!-- Edit Profile Modal -->
+    {#if isEditModalOpen}
+        <div class="modal-overlay">
+            <div class="modal-card">
+                <h3>Edit Profile</h3>
+                
+                <input type="text" placeholder="Username" bind:value={editForm.username} />
+                <input type="text" placeholder="Full Name" bind:value={editForm.name} />
+                <textarea placeholder="Bio" bind:value={editForm.bio}></textarea>
+                
+                <select class="select-input" bind:value={editForm.gender}>
+                    <option value="" disabled>Select Gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                </select>
+
+                <div class="field-container">
+                    <label for="edit-dob" class="field-label">Date of Birth</label>
+                    <input id="edit-dob" type="date" bind:value={editForm.dob} />
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn-secondary" on:click={() => isEditModalOpen = false}>Cancel</button>
+                    <button class="btn-primary" on:click={handleUpdateProfile}>Save Changes</button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Edit Photo Modal -->
+    {#if isPhotoModalOpen}
+        <div class="modal-overlay">
+            <div class="modal-card">
+                <h3>Upload Profile Photo</h3>
+                <input type="file" accept="image/png, image/jpeg" on:change={(e) => photoFile = e.target.files[0]} />
+                <div class="modal-actions">
+                    <button class="btn-secondary" on:click={() => isPhotoModalOpen = false}>Cancel</button>
+                    <button class="btn-primary" on:click={handleUpdatePhoto} disabled={!photoFile}>Upload</button>
+                </div>
+            </div>
+        </div>
+    {/if}
 
 {:else}
 
@@ -477,7 +820,6 @@
             placeholder="Email *"
         >
 
-        <!-- Searchable Phone Dropdown -->
         <div class="phone-group">
             <div class="custom-select prefix-select">
                 <button type="button" class="select-btn" on:click={() => phoneDropdownOpen = !phoneDropdownOpen}>
@@ -521,7 +863,6 @@
             placeholder="Password *"
         >
 
-        <!-- Date of Birth Field -->
         <div class="field-container">
             <label for="dob-input" class="field-label">Date of Birth *</label>
             <input
@@ -532,7 +873,6 @@
             >
         </div>
 
-        <!-- Gender Selection Field -->
         <select 
             class="select-input" 
             class:invalid={invalidFields.gender} 
@@ -542,7 +882,6 @@
             <option value="female">Female</option>
         </select>
 
-        <!-- Searchable Country Dropdown -->
         <div class="custom-select full-width">
             <button 
                 type="button" 
@@ -622,8 +961,6 @@
     --primary-teal-hover: #0082A0;
     --gradient-btn: linear-gradient(135deg, #00A3C4 0%, #0068A8 100%);
     --gradient-btn-hover: linear-gradient(135deg, #00BBE2 0%, #007CC9 100%);
-    --accent-amber: #E67E22;
-    --tab-inactive: #1E2D42;
     --error-red: #EF4444;
     --success-teal: #10B981;
 }
@@ -656,11 +993,10 @@
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    padding: 2rem;
+    padding: 1rem;
     box-sizing: border-box;
 }
 
-/* Authentication Card (Flexible Width) */
 .card{
     width: 100%;
     max-width: 460px;
@@ -721,7 +1057,7 @@ h1{
     padding-left: 2px;
 }
 
-input, .select-input{
+input, textarea, .select-input{
     width: 100%;
     padding: .8rem 1rem;
     margin-bottom: 1rem;
@@ -736,11 +1072,12 @@ input, .select-input{
     color-scheme: dark;
 }
 
-.field-container input {
-    margin-bottom: 0;
+textarea {
+    min-height: 80px;
+    resize: vertical;
 }
 
-input:focus, .select-input:focus {
+input:focus, textarea:focus, .select-input:focus {
     border-color: var(--primary-teal);
 }
 
@@ -870,7 +1207,6 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     cursor: not-allowed;
 }
 
-/* Success Redirect Box Styling */
 .success-box {
     background: rgba(16, 185, 129, 0.1);
     border: 1px solid var(--success-teal);
@@ -913,7 +1249,26 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     font-size: .9rem;
 }
 
-/* Expanded Application Viewport for Desktop & Large Screens */
+.error-banner {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid var(--error-red);
+    color: #FCA5A5;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.error-banner button {
+    background: transparent;
+    border: none;
+    color: #FCA5A5;
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+
 .app-screen {
     width: 100%;
     max-width: 900px;
@@ -981,7 +1336,7 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
 .content-body {
     flex: 1;
     overflow-y: auto;
-    padding: 2rem;
+    padding: 1.5rem;
 }
 
 .empty-state {
@@ -999,7 +1354,86 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     margin-bottom: 0.5rem;
 }
 
-/* Bottom Navigation Bar */
+.search-bar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.search-bar input {
+    margin-bottom: 0;
+}
+
+.search-bar button {
+    padding: 0 1.5rem;
+    background: var(--gradient-btn);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.user-card {
+    background: #0D172A;
+    padding: 1rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.user-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary-teal);
+}
+
+.user-avatar-small {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 2px solid var(--primary-teal);
+}
+
+.user-avatar-small img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.avatar-placeholder-small {
+    width: 100%;
+    height: 100%;
+    background: #1A283D;
+    color: var(--primary-teal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+.user-details h4 {
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+.user-details p {
+    margin: 2px 0 0 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
 .bottom-nav {
     display: flex;
     border-top: 1px solid var(--border-color);
@@ -1033,7 +1467,6 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     margin-top: 2px;
 }
 
-/* Responsive Expanded Profile View */
 .profile-card {
     display: flex;
     flex-direction: column;
@@ -1045,12 +1478,12 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
 .profile-header {
     display: flex;
     align-items: center;
-    gap: 2rem;
+    gap: 1.5rem;
 }
 
 .avatar-wrapper {
-    width: 110px;
-    height: 110px;
+    width: 100px;
+    height: 100px;
     border-radius: 50%;
     border: 3px solid var(--primary-teal);
     overflow: hidden;
@@ -1106,12 +1539,17 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     line-height: 1.5;
 }
 
+.action-bar {
+    display: flex;
+    gap: 0.8rem;
+}
+
 .action-bar button {
-    width: 100%;
+    flex: 1;
     padding: 0.85rem;
     border-radius: 8px;
     font-weight: 600;
-    font-size: 1rem;
+    font-size: 0.95rem;
     cursor: pointer;
 }
 
@@ -1132,6 +1570,11 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     border: 1px solid var(--border-color);
 }
 
+.btn-secondary.danger {
+    color: var(--error-red);
+    border-color: var(--error-red);
+}
+
 .btn-secondary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
@@ -1142,5 +1585,75 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     color: var(--text-muted);
     padding-top: 3rem;
     font-size: 1.1rem;
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 3000;
+}
+
+.modal-card {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    width: 90%;
+    max-width: 420px;
+}
+
+.modal-card h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.8rem;
+    margin-top: 1rem;
+}
+
+.modal-actions button {
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+@media (max-width: 600px) {
+    .app-brand {
+        top: 1rem;
+        left: 1rem;
+    }
+    
+    .brand-logo {
+        height: 36px;
+    }
+
+    .container {
+        padding: 0;
+    }
+
+    .app-screen {
+        height: 100vh;
+        border-radius: 0;
+        border: none;
+    }
+
+    .profile-header {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .action-bar {
+        flex-direction: column;
+    }
 }
 </style>

@@ -8,7 +8,6 @@ class SearchEngine:
     async def SearchForUsers(self, limit: int = 10):
         username_socre = func.similarity(users_table.c.username, self.keyword).label("username_score")
         name_score = func.similarity(users_table.c.name, self.keyword).label("name_score")
-        
         best_score = func.greatest(username_socre, name_score).label("greatest_score")
         
         stmt = select(users_table.c.id, users_table.c.username, 

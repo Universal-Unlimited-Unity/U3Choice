@@ -1,6 +1,7 @@
 from services.search_engine import SearchEngine
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import Annotated, TypedDict
+from typing import Annotated
+from typing_extensions import TypedDict
 from services.authentification import verify_token
 from services.users import get_user_profile_BY_ID
 from uuid import UUID
@@ -12,7 +13,7 @@ class UserSearchResult(TypedDict):
     name: str
     photo_url: str
     
-@search_router.get("/users", response_model=list[UserSearchResult])
+@search_router.get("/users", response_model=dict[str, list[UserSearchResult]])
 async def search_users(keyword: Annotated[str, Query(min_length=1)], limit: Annotated[int, Query(ge=1, le=100)], user: Annotated[dict[str, str], Depends(verify_token)]):
     if user.get("status") != "Active":
         raise HTTPException(status_code=403, detail="Your account is suspended")

@@ -7,15 +7,16 @@ from pydantic import EmailStr
 from jose import jwt
 from datetime import datetime, timedelta, date
 from config import settings
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import Depends, HTTPException
 from pwdlib import PasswordHash
 
 pwd_hash = PasswordHash.recommended()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="VerifyToken")
+security = HTTPBearer()
 
-def verify_token(token: str = Depends(oauth2_scheme)):
+def verify_token(credential: HTTPAuthorizationCredentials = Depends(security)):
+    token = credential.credentials
     try:
         user = decode_token(token)
         return user

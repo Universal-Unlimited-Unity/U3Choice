@@ -16,6 +16,7 @@ async def signup_endpoint(user: Annotated[User, Body()]):
     if not verify_age(user.dob):
         raise HTTPException(status_code=400, detail="USER_UNDERAGE")
     user.pwd_hash = hash_pwd(user.pwd_hash)
+    user.username = user.username.lower()
     signup(user)
     return {"message": "User created successfully"}
 

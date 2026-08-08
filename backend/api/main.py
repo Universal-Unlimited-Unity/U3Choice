@@ -3,7 +3,7 @@ from .endpoints.authentification import auth_router
 from .endpoints.users import router as users_router
 from .endpoints.friendships import router as friendships_router
 from .endpoints.search_engine import search_router
-from database import metadata, eng
+from database import init_db
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting up...")
-    metadata.create_all(eng, checkfirst=True)
+    await init_db()
     yield
     print("Shutting down...")
 

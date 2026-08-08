@@ -1,4 +1,4 @@
-import {fetchParseHandler} from "./fetch.js";
+import {fetchParseHandler} from "./http.js";
 const API_URL = import.meta.env.VITE_API_URL;
 
 export async function sendFriendRequest(token, friendshipData) {
