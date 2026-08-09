@@ -129,13 +129,22 @@
         return payload?.username || null;
     }
 
+    function getUsernameFromPath() {
+        const path = window.location.pathname.replace(/^\/+|\/+$/g, "");
+        if (!path) return null;
+
+        return path.split("/")[0].toLowerCase();
+    }
+
+    activeProfileUsername = getUsernameFromPath();
+
     async function fetchUserProfile(targetUsername = null) {
         if (!token) return;
 
         if (targetUsername) {
             activeProfileUsername = targetUsername;
         } else if (!activeProfileUsername) {
-            activeProfileUsername = getMyUsername();
+            activeProfileUsername = getUsernameFromPath() || getMyUsername();
         }
 
         const usernameToFetch = activeProfileUsername;
@@ -373,8 +382,8 @@
         }
     }
 
-    $: if (token && activeTab === "profile" && !profileData && !loadingProfile) {
-        fetchUserProfile(activeProfileUsername || getMyUsername());
+    $: if (token && activeTab === "profile" && !profileData && !loadingProfile && !error) {
+        fetchUserProfile(activeProfileUsername);
     }
 
     $: if (token && activeTab === "friends") {
@@ -673,7 +682,9 @@
                             {#if profileData.is_owner}
                                 <button class="btn-secondary" on:click={() => isEditModalOpen = true}>Edit Profile</button>
                                 <button class="btn-secondary" on:click={() => isPhotoModalOpen = true}>Change Photo</button>
-                            {:else if profileData.is_blocked}
+                            {:else if profileData.they_blocked_me}
+                                <button class="btn-secondary" disabled>You got blocked</button>
+                            {:else if profileData.i_blocked_them}
                                 <button class="btn-secondary" on:click={handleUnblockUser}>Unblock User</button>
                             {:else if profileData.is_friends}
                                 <button class="btn-secondary danger" on:click={handleRemoveFriendship}>Remove Friend</button>

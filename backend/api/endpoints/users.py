@@ -5,7 +5,7 @@ from schemas.users_schema import Profile_View, User_Update, old_pwd, new_pwd, ne
 from redis_client import redis
 import json
 from typing import Annotated, Any
-from services.friendships import check_friendship_status, check_friendship_request_exists, is_blocked_friendship_exists, get_friends_brief
+from services.friendships import check_friendship_status, check_friendship_request_exists, is_blocked_friendship_exists, get_friends_brief, did_they_blocked_me
 from services.users import update_user_profile, update_user_profile_photo
 from services.authentification import verify_token, username_used
 from fastapi.responses import FileResponse
@@ -42,8 +42,9 @@ async def read_user_profile(username: Annotated[str, Path()], user: Annotated[di
                                 is_friends=await check_friendship_status(requested_profile.id, uuid.UUID(viwer_id)),
                                 has_sent_friendship_request=await check_friendship_request_exists(requested_profile.id, uuid.UUID(viwer_id)),
                                 has_received_friendship_request=await check_friendship_request_exists(uuid.UUID(viwer_id), requested_profile.id),
-                                is_blocked=await is_blocked_friendship_exists(uuid.UUID(viwer_id), requested_profile.id))
-    
+                                they_blocked_me=await did_they_blocked_me(uuid.UUID(viwer_id), requested_profile.id),
+                                i_blocked_them=await did_they_blocked_me(requested_profile.id, uuid.UUID(viwer_id)))
+
     if profile_view.status != "Active":
         raise HTTPException(status_code=403, detail="User is suspended")
     redis.set(f"user:session:{viwer_id}:{username}", json.dumps(profile_view.model_dump()), ex=3600)
@@ -65,7 +66,7 @@ async def read_user_friends(username: Annotated[str, Path()], user: Annotated[di
         raise HTTPException(status_code=403, detail="User is suspended")
     
     if redis.exists(f"user:session:friends:{username}"):
-        return json.loads(redis.get(f"user:session:friends:{username}"))
+        return {"friends": json.loads(redis.get(f"user:session:friends:{username}")), "total": len(json.loads(redis.get(f"user:session:friends:{username}")))}
     friends_brief = await get_friends_brief(requested_profile.id)
     redis.set(f"user:session:friends:{username}", json.dumps(friends_brief), ex=3600)
     return {"friends": friends_brief, "total": len(friends_brief)}

@@ -45,6 +45,8 @@ class Profile_View(BaseModel):
     is_blocked: bool = False
     has_sent_friendship_request: bool = False
     has_received_friendship_request: bool = False
+    they_blocked_me: bool
+    i_blocked_them: bool
     
 class User(BaseModel):
     id: UUID = Field(default_factory=uuid4)

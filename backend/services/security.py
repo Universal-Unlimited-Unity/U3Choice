@@ -25,3 +25,11 @@ async def verify_pwd(user_id: str, pwd: str) -> bool:
             if pwd_hash.verify(pwd, result):
                 return True
         return False
+
+async def update_cach_key(user1_id: str, user2_id: str, username1: str, username2: str):
+    if redis.exists(f"user:session:{user1_id}:{username2}"):
+        redis.delete(f"user:session:{user1_id}:{username2}")
+    if redis.exists(f"user:session:{user2_id}:{username1}"):
+        redis.delete(f"user:session:{user2_id}:{username1}")
+    await refresh_user_friends_cashe(username1)
+    await refresh_user_friends_cashe(username2)

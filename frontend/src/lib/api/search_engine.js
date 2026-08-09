@@ -1,6 +1,6 @@
 import {fetchParseHandler} from "./http.js";
 
-const API_URL = import.meta.env.VITE_API_URL + "/users";
+const API_URL = import.meta.env.VITE_API_URL;
 
 export async function searchUsers(token, keyword, limit = 10) {
     const url = new URL(`${API_URL}/search/users`);

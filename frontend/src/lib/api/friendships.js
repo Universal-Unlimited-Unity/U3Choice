@@ -48,7 +48,7 @@ export async function UnblockFriend(token, blockfriendshipData) {
         headers: {"Authorization": `Bearer ${token}`,
             "Content-Type": "application/json"
         },
-        body: JSON.stringify(unblockfriendshipData)
+        body: JSON.stringify(blockfriendshipData)
     });
 }
 

@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, Date, Table, Column, Index, String
+from sqlalchemy import ForeignKey, Integer, DateTime, Table, Column, Index, String
 from database import metadata
 from sqlalchemy.dialects.postgresql import UUID
 from models.user_model import users_table
@@ -8,8 +8,8 @@ friendships_table = Table(
     metadata,
     Column("sender_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
     Column("receiver_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-    Column("created_at", Date, nullable=False),
-    Column("updated_at", Date, nullable=True),
+    Column("created_at", DateTime, nullable=False),
+    Column("updated_at", DateTime, nullable=True),
     Column("status", String, nullable=False),
     Index("ix_friendships_sender_receiver_status", "sender_id", "receiver_id", "status", unique=True),
 )
@@ -19,5 +19,6 @@ blocked_friendships_table = Table(
     metadata,
     Column("blocker_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
     Column("blocked_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-    Column("created_at", Date, nullable=False),
+    Column("created_at", DateTime, nullable=False),
+    Index("ix_blocked_friendships_blocker_blocked", "blocker_id", "blocked_id", unique=True),
 )

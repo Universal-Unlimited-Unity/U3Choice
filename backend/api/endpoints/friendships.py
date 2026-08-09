@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends, Path, Body
 from services.users import get_user_profile_BY_ID
 from schemas.friendships_schema import Friendships, Friendships_short, blocked_friendships, blocked_friendships_short
-from services.friendships import check_friendship_request_exists, send_friendship_request, accept_friendship_request, reject_friendship_request, block_friendship, unblock_friendship
+from services.friendships import check_friendship_request_exists, send_friendship_request, accept_friendship_request, reject_friendship_request, block_friendship, unblock_friendship, remove_friendship_request
 from exceptions import FriendRequestNotFound, FriendshipAlreadyBlocked, FriendshipNotBlocked, SelfBlockError
 from typing import Annotated
 from services.authentification import verify_token
-from services.friendships import check_friendship_request_exists, is_blocked_friendship_exists, remove_friendship
-
+from services.friendships import check_friendship_request_exists, is_blocked_friendship_exists, remove_friendship, did_they_blocked_me
+from services.security import update_cach_key
 router = APIRouter(prefix="/friendships", tags=["friendships"])
 
 
@@ -24,7 +24,7 @@ async def send_request(friendship: Annotated[Friendships, Body()], user: Annotat
         raise HTTPException(status_code=404, detail="User not found")
     if requested_profile1.status != "Active" or requested_profile2.status != "Active":
         raise HTTPException(status_code=403, detail="One or both users are suspended")
-    await send_friendship_request(friendship)
+    await send_friendship_request(friendship, requested_profile2.username, requested_profile1.username)
     return {"message": "Friendship request sent successfully"}
 
 @router.post("/accept_request")
@@ -64,7 +64,7 @@ async def reject_request(friendship: Annotated[Friendships_short, Body()], user:
         raise HTTPException(status_code=404, detail="Friendship request not found")
 
 @router.delete("/remove_friendship")
-async def remove_friendship(friendship: Annotated[Friendships_short, Body()], user: Annotated[dict, Depends(verify_token)]):
+async def remove_friendship_endpoint(friendship: Annotated[Friendships_short, Body()], user: Annotated[dict, Depends(verify_token)]):
     if str(friendship.sender_id) != user.get("id") and str(friendship.receiver_id) != user.get("id"):
         raise HTTPException(status_code=403, detail="You are not authorized to remove this friendship")
     requested_profile1 = await get_user_profile_BY_ID(friendship.sender_id)
@@ -78,7 +78,7 @@ async def remove_friendship(friendship: Annotated[Friendships_short, Body()], us
         return {"message": "Friendship removed successfully"}
     except FriendRequestNotFound:
         raise HTTPException(status_code=404, detail="Friendship does not exist")
-    
+
 @router.post("/block")
 async def block_friendship_endpoint(blocked: Annotated[blocked_friendships, Body()], user: Annotated[dict, Depends(verify_token)]):
     if str(blocked.blocker_id) != user.get("id"):
@@ -132,3 +132,20 @@ async def remove_friendship_endpoint(friendship: Annotated[Friendships_short, Bo
         return {"message": "Friendship removed successfully"}
     except FriendRequestNotFound:
         raise HTTPException(status_code=404, detail="Friendship does not exist")
+
+
+@router.delete("/remove_friend_request")
+async def remove_friend_request_endpoint(friendship: Annotated[Friendships_short, Body()], user: Annotated[dict, Depends(verify_token)]):
+    if str(friendship.sender_id) != user.get("id"):
+        raise HTTPException(status_code=403, detail="You are not authorized to remove this friendship request")
+    requested_profile1 = await get_user_profile_BY_ID(friendship.sender_id)
+    requested_profile2 = await get_user_profile_BY_ID(friendship.receiver_id)
+    if not requested_profile1 or not requested_profile2:
+        raise HTTPException(status_code=404, detail="User not found")
+    if requested_profile1.status != "Active" or requested_profile2.status != "Active":
+        raise HTTPException(status_code=403, detail="One or both users are suspended")
+    try:
+        await remove_friendship_request(friendship.sender_id, friendship.receiver_id, requested_profile1.username, requested_profile2.username)
+        return {"message": "Friendship request removed successfully"}
+    except FriendRequestNotFound:
+        raise HTTPException(status_code=404, detail="Friendship request does not exist")
