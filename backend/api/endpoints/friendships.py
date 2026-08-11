@@ -31,8 +31,8 @@ async def send_request(friendship: Annotated[Friendships, Body()], user: Annotat
 async def accept_request(friendship: Annotated[Friendships_short, Body()], user: Annotated[dict, Depends(verify_token)]):
     if str(friendship.receiver_id) != user.get("id"):
         raise HTTPException(status_code=403, detail="You are not authorized to accept a friendship request for this user")
-    requested_profile1 = await get_user_profile_BY_ID(friendship.receiver_id)
-    requested_profile2 = await get_user_profile_BY_ID(friendship.sender_id)
+    requested_profile1 = await get_user_profile_BY_ID(friendship.sender_id)
+    requested_profile2 = await get_user_profile_BY_ID(friendship.receiver_id)
     if not requested_profile1 or not requested_profile2:
         raise HTTPException(status_code=404, detail="User not found")
     if requested_profile1.status != "Active" or requested_profile2.status != "Active":

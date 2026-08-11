@@ -88,12 +88,8 @@ def signin(email: EmailStr, pwd: str, last_login: datetime):
 
 
 def decode_token(token: str):
-    try:
-        payload = jwt.decode(token, settings.TOKEN_KEY, algorithms=settings.TOKEN_ALGO)
-        return payload
-    except Exception as e:
-        print(e)
-        return None
+    payload = jwt.decode(token, settings.TOKEN_KEY, algorithms=settings.TOKEN_ALGO)
+    return payload
 
 def verify_age(birthdate: date):
     today = datetime.today()

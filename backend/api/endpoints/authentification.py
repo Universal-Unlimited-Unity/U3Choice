@@ -15,14 +15,15 @@ async def signup_endpoint(user: Annotated[User, Body()]):
         raise HTTPException(status_code=400, detail="PASSWORD_NOT_STRONG")
     if not verify_age(user.dob):
         raise HTTPException(status_code=400, detail="USER_UNDERAGE")
-    user.pwd_hash = hash_pwd(user.pwd_hash)
+    user.pwd_hash = hash_pwd(user.pwd_hash.lower())
     user.username = user.username.lower()
+    user.email = user.email.lower()
     signup(user)
     return {"message": "User created successfully"}
 
 @auth_router.post("/signin")
 async def signin_endpoint(credentials: Annotated[credentials, Body()]):
-    token = signin(credentials.email, credentials.pwd, credentials.last_login)
+    token = signin(credentials.email.lower(), credentials.pwd.lower(), credentials.last_login)
     if not token:
         raise HTTPException(status_code=400, detail="INVALID_CREDENTIALS")
     if token == -1:

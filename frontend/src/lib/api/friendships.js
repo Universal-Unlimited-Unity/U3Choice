@@ -61,3 +61,13 @@ export async function removeFriendship(token, friendshipData) {
         body: JSON.stringify(friendshipData)
     });
 }
+
+export async function removeFriendRequest(token, friendshipData) {
+    return await fetchParseHandler(`${API_URL}/friendships/remove_friend_request`, {
+        method: "DELETE",
+        headers: {"Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(friendshipData)
+    });
+}

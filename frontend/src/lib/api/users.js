@@ -28,6 +28,20 @@ export async function getPhoto(token, username) {
     }
 }
 
+export async function getPhotoUrl(token, username) {
+    try {
+        const blob = await fetchParseHandlerForFiles(`${API_URL}/${username}/photo`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (blob) {
+            return URL.createObjectURL(blob);
+        }
+    } catch (err) {
+        console.error("Failed to load photo for", username, err);
+    }
+    return null;
+}
+
 export async function getfriends(token, username) {
     return await fetchParseHandler(`${API_URL}/${username}/friends`, {
         headers: {
@@ -59,36 +73,45 @@ export async function updateProfilePhoto(token, username, photoFile) {
     });
 }
 
-export async function changePassword(token, oldPassword, newPassword, ) {
+export async function changePassword(token, oldPassword, newPassword) {
     return await fetchParseHandler(`${API_URL}/settings/password`, {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${token}`,
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({old_pwd: oldPassword, new_pwd: newPassword })
+        body: JSON.stringify({
+            old_pwd: { old_pwd: oldPassword },
+            new_pwd: { new_pwd: newPassword }
+        })
     });
 }
 
-export async function changeEmail(token, newEmail) {
+export async function changeEmail(token, currentPassword, newEmail) {
     return await fetchParseHandler(`${API_URL}/settings/email`, {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${token}`,
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({new_email: newEmail })
+        body: JSON.stringify({
+            pwd: { old_pwd: currentPassword },
+            new_email: { new_email: newEmail }
+        })
     });
 }
 
-export async function changePhone(token, newPhone) {
+export async function changePhone(token, currentPassword, newPhone) {
     return await fetchParseHandler(`${API_URL}/settings/phone`, {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${token}`,
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({new_phone: newPhone })
+        body: JSON.stringify({
+            pwd: { old_pwd: currentPassword },
+            new_phone: { new_phone: newPhone }
+        })
     });
 }
 

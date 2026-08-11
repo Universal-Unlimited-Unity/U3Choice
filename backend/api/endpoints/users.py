@@ -129,7 +129,7 @@ async def get_user_settings(old_pwd: Annotated[old_pwd, Body()], new_pwd: Annota
     if new_pwd.new_pwd == old_pwd.old_pwd:
         raise HTTPException(status_code=400, detail="New password cannot be the same as the old password")
     if not pwd_strong(new_pwd.new_pwd):
-        raise HTTPException(status_code=400, detail="New password is not strong enough")
+        raise HTTPException(status_code=400, detail="New password is not strong enough, include at least 8 characters, one number and one special character")
     requested_profile = await get_user_profile_BY_USERNAME(user.get("username"))
     if not requested_profile:
         raise HTTPException(status_code=404, detail="User not found")
@@ -137,9 +137,11 @@ async def get_user_settings(old_pwd: Annotated[old_pwd, Body()], new_pwd: Annota
     return {"message": "Password changed successfully"}
 
 @router.post("/settings/email")
-async def get_user_settings_email(new_email: Annotated[new_email, Body()], user: Annotated[dict, Depends(verify_token)]):    
+async def get_user_settings_email(pwd: Annotated[old_pwd, Body()], new_email: Annotated[new_email, Body()], user: Annotated[dict, Depends(verify_token)]):    
     if user.get("status") != "Active":
         raise HTTPException(status_code=403, detail="Your account is suspended")
+    if not await verify_pwd(user.get("id"), pwd.old_pwd.lower()):
+        raise HTTPException(status_code=403, detail="Invalid password")
     requested_profile = await get_user_profile_BY_USERNAME(user.get("username"))
     if not requested_profile:
         raise HTTPException(status_code=404, detail="User not found")
@@ -147,9 +149,11 @@ async def get_user_settings_email(new_email: Annotated[new_email, Body()], user:
     return {"message": "Email changed successfully"}
 
 @router.post("/settings/phone")
-async def get_user_settings_phone(new_phone: Annotated[new_phone, Body()], user: Annotated[dict, Depends(verify_token)]):    
+async def get_user_settings_phone(pwd: Annotated[old_pwd, Body()], new_phone: Annotated[new_phone, Body()], user: Annotated[dict, Depends(verify_token)]):    
     if user.get("status") != "Active":
         raise HTTPException(status_code=403, detail="Your account is suspended")
+    if not await verify_pwd(user.get("id"), pwd.old_pwd.lower()):
+        raise HTTPException(status_code=403, detail="Invalid password")
     requested_profile = await get_user_profile_BY_USERNAME(user.get("username"))
     if not requested_profile:
         raise HTTPException(status_code=404, detail="User not found")

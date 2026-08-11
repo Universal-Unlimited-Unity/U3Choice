@@ -13,9 +13,20 @@ export async function fetchParseHandler(url, options) {
     } catch {}
 
     if (!response.ok) {
+        // If unauthorized, clear token and notify app to logout
+        if (response.status === 401) {
+            try {
+                localStorage.removeItem("token");
+            } catch (e) {}
+            const reason = data?.detail || 'Unauthorized';
+            try {
+                window.dispatchEvent(new CustomEvent('u3:logout', { detail: { reason } }));
+            } catch (e) {}
+        }
+
         throw {
             status: response.status,
-            detail: data.detail,
+            detail: data?.detail,
         }
     }
 
@@ -31,6 +42,12 @@ export async function fetchParseHandlerForFiles(url, options) {
     }
 
     if (!response.ok) {
+        if (response.status === 401) {
+            try { localStorage.removeItem("token"); } catch (e) {}
+            try {
+                window.dispatchEvent(new CustomEvent('u3:logout', { detail: { reason: 'Unauthorized' } }));
+            } catch (e) {}
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
     }
 

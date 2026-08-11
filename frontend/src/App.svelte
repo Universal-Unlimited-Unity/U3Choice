@@ -1,10 +1,15 @@
 <script>
     import { signup, signin } from "./lib/api/auth";
+    import { onMount, onDestroy } from 'svelte';
     import { 
         getProfile, 
         updateProfile, 
         updateProfilePhoto, 
-        getfriends 
+        changePassword,
+        changeEmail,
+        changePhone,
+        getfriends,
+        getPhotoUrl
     } from "./lib/api/users";
     import { searchUsers } from "./lib/api/search_engine";
     import { 
@@ -12,6 +17,7 @@
         acceptFriendRequest, 
         rejectFriendRequest, 
         removeFriendship, 
+        removeFriendRequest,
         BlockFriend, 
         UnblockFriend 
     } from "./lib/api/friendships";
@@ -73,6 +79,10 @@
     let searchQuery = "";
     let searchResults = [];
     let isSearching = false;
+    let searchPhotoUrls = {};
+    let _prevSearchPhotoUrls = [];
+    let friendsPhotoUrls = {};
+    let _prevFriendsPhotoUrls = [];
 
     // Friends Feature State
     let friendsList = [];
@@ -83,6 +93,18 @@
     let isEditModalOpen = false;
     let isPhotoModalOpen = false;
     let photoFile = null;
+    let isSettingsMenuOpen = false;
+    let isSettingsModalOpen = false;
+    let settingsAction = "";
+    let settingsCurrentPassword = "";
+    let settingsNewValue = "";
+    let settingsConfirmValue = "";
+    let settingsPhonePrefix = selectedPhonePrefix;
+    let settingsPhoneNumber = "";
+    let settingsPhoneDropdownOpen = false;
+    let settingsPhoneSearch = "";
+    let settingsError = "";
+    let settingsLoading = false;
 
     let editForm = {
         username: "",
@@ -109,6 +131,12 @@
         c.code.toLowerCase().includes(countrySearch.toLowerCase())
     );
 
+    $: filteredSettingsPhoneCountries = countries.filter(c => 
+        c.name.toLowerCase().includes(settingsPhoneSearch.toLowerCase()) ||
+        c.dial_code.includes(settingsPhoneSearch) ||
+        c.code.toLowerCase().includes(settingsPhoneSearch.toLowerCase())
+    );
+
     function getPayloadFromToken(jwtToken) {
         if (!jwtToken) return null;
         try {
@@ -122,6 +150,26 @@
             console.error("Failed to decode token", e);
             return null;
         }
+    }
+
+    function formatApiError(err, fallbackMessage) {
+        const detail = err?.detail;
+
+        if (Array.isArray(detail) && detail.length > 0) {
+            const messages = detail
+                .map((item) => item?.msg || item?.message)
+                .filter(Boolean);
+
+            if (messages.length > 0) {
+                return messages.join(" ");
+            }
+        }
+
+        if (typeof detail === "string" && detail.trim()) {
+            return detail;
+        }
+
+        return fallbackMessage;
     }
 
     function getMyUsername() {
@@ -202,6 +250,7 @@
 
     function viewUserProfile(targetUsername) {
         if (!targetUsername) return;
+        isSettingsMenuOpen = false;
         activeProfileUsername = targetUsername;
         profileData = null;
         activeTab = "profile";
@@ -210,6 +259,7 @@
 
     function viewMyProfile() {
         const myUsername = getMyUsername();
+        isSettingsMenuOpen = false;
         activeProfileUsername = myUsername;
         profileData = null;
         activeTab = "profile";
@@ -224,6 +274,7 @@
         try {
             const results = await searchUsers(token, searchQuery, 10);
             searchResults = results || [];
+            fetchSearchPhotos(searchResults);
         } catch (err) {
             console.error("Search failed:", err);
             searchResults = [];
@@ -231,6 +282,31 @@
         } finally {
             isSearching = false;
         }
+    }
+
+    function clearSearchPhotoUrls() {
+        for (const url of _prevSearchPhotoUrls) {
+            try { URL.revokeObjectURL(url); } catch (e) {}
+        }
+        _prevSearchPhotoUrls = [];
+        searchPhotoUrls = {};
+    }
+
+    async function fetchSearchPhotos(results) {
+        clearSearchPhotoUrls();
+        if (!results || !results.length) return;
+        const promises = results.map(async (user) => {
+            try {
+                const url = await getPhotoUrl(token, user.username);
+                if (url) {
+                    searchPhotoUrls = { ...searchPhotoUrls, [user.username]: url };
+                    _prevSearchPhotoUrls.push(url);
+                }
+            } catch (e) {
+                // ignore per-user failures
+            }
+        });
+        await Promise.all(promises);
     }
 
     async function fetchFriendsList() {
@@ -243,11 +319,37 @@
             const res = await getfriends(token, myUsername);
             friendsList = res.friends || [];
             totalFriends = res.total_friends || 0;
+            fetchFriendsPhotos(friendsList);
         } catch (err) {
             console.error("Error fetching friends:", err);
         } finally {
             loadingFriends = false;
         }
+    }
+
+    function clearFriendsPhotoUrls() {
+        for (const url of _prevFriendsPhotoUrls) {
+            try { URL.revokeObjectURL(url); } catch (e) {}
+        }
+        _prevFriendsPhotoUrls = [];
+        friendsPhotoUrls = {};
+    }
+
+    async function fetchFriendsPhotos(results) {
+        clearFriendsPhotoUrls();
+        if (!results || !results.length) return;
+        const promises = results.map(async (user) => {
+            try {
+                const url = await getPhotoUrl(token, user.username);
+                if (url) {
+                    friendsPhotoUrls = { ...friendsPhotoUrls, [user.username]: url };
+                    _prevFriendsPhotoUrls.push(url);
+                }
+            } catch (e) {
+                // ignore per-user failures
+            }
+        });
+        await Promise.all(promises);
     }
 
     async function handleSendRequest() {
@@ -299,6 +401,19 @@
             await fetchUserProfile(profileData.username);
         } catch (err) {
             error = err?.detail || "Could not remove friend.";
+        }
+    }
+
+    async function handleRemoveFriendRequest() {
+        const payload = getPayloadFromToken(token);
+        try {
+            await removeFriendRequest(token, {
+                sender_id: payload.id,
+                receiver_id: profileData.viwed_id
+            });
+            await fetchUserProfile(profileData.username);
+        } catch (err) {
+            error = err?.detail || "Could not remove friend request.";
         }
     }
 
@@ -382,6 +497,93 @@
         }
     }
 
+    function resetSettingsState() {
+        isSettingsMenuOpen = false;
+        isSettingsModalOpen = false;
+        settingsAction = "";
+        settingsCurrentPassword = "";
+        settingsNewValue = "";
+        settingsConfirmValue = "";
+        settingsPhonePrefix = selectedPhonePrefix;
+        settingsPhoneNumber = "";
+        settingsPhoneDropdownOpen = false;
+        settingsPhoneSearch = "";
+        settingsError = "";
+        settingsLoading = false;
+    }
+
+    function openSettingsAction(action) {
+        settingsAction = action;
+        settingsCurrentPassword = "";
+        settingsNewValue = "";
+        settingsConfirmValue = "";
+        settingsPhonePrefix = selectedPhonePrefix;
+        settingsPhoneNumber = "";
+        settingsPhoneDropdownOpen = false;
+        settingsPhoneSearch = "";
+        settingsError = "";
+        settingsLoading = false;
+        isSettingsMenuOpen = false;
+        isSettingsModalOpen = true;
+    }
+
+    function closeSettingsModal() {
+        resetSettingsState();
+    }
+
+    async function handleSettingsSave() {
+        const currentPassword = settingsCurrentPassword.trim();
+        const nextValue = settingsNewValue.trim();
+
+        if (!currentPassword) {
+            settingsError = "Current password is required.";
+            return;
+        }
+
+        if (settingsAction === "password") {
+            if (!nextValue) {
+                settingsError = "Please provide the new password.";
+                return;
+            }
+
+            if (!settingsConfirmValue.trim()) {
+                settingsError = "Please confirm the new password.";
+                return;
+            }
+
+            if (settingsNewValue !== settingsConfirmValue) {
+                settingsError = "New passwords do not match.";
+                return;
+            }
+        }
+
+        settingsLoading = true;
+        settingsError = "";
+
+        try {
+            if (settingsAction === "password") {
+                await changePassword(token, currentPassword, nextValue);
+            } else if (settingsAction === "email") {
+                await changeEmail(token, currentPassword, nextValue);
+            } else if (settingsAction === "phone") {
+                const phoneNumber = settingsPhoneNumber.trim();
+                if (!phoneNumber) {
+                    settingsError = "Please provide the new phone number.";
+                    settingsLoading = false;
+                    return;
+                }
+
+                await changePhone(token, currentPassword, `${settingsPhonePrefix} ${phoneNumber}`);
+            }
+
+            closeSettingsModal();
+        } catch (err) {
+            settingsError = formatApiError(err, "Failed to update settings.");
+        } finally {
+            settingsLoading = false;
+        }
+    }
+
     $: if (token && activeTab === "profile" && !profileData && !loadingProfile && !error) {
         fetchUserProfile(activeProfileUsername);
     }
@@ -394,6 +596,12 @@
         selectedPhonePrefix = country.dial_code;
         phoneDropdownOpen = false;
         phoneSearch = "";
+    }
+
+    function selectSettingsPhoneCountry(country) {
+        settingsPhonePrefix = country.dial_code;
+        settingsPhoneDropdownOpen = false;
+        settingsPhoneSearch = "";
     }
 
     function selectCountry(country) {
@@ -528,7 +736,23 @@
         profileData = null;
         profilePhotoUrl = null;
         activeProfileUsername = null;
+        resetSettingsState();
     }
+
+    // Listen for global unauthorized events from fetch helpers
+    let _u3_unauth_handler = (ev) => {
+        const reason = ev?.detail?.reason || 'Session expired. Please sign in again.';
+        error = reason;
+        logout();
+    }
+
+    onMount(() => {
+        window.addEventListener('u3:logout', _u3_unauth_handler);
+    });
+
+    onDestroy(() => {
+        window.removeEventListener('u3:logout', _u3_unauth_handler);
+    });
 </script>
 
 <svelte:head>
@@ -597,7 +821,9 @@
                             {#each searchResults as user}
                                 <div class="user-card" on:click={() => viewUserProfile(user.username)}>
                                     <div class="user-avatar-small">
-                                        {#if user.photo_url && user.photo_url !== 'assets/default_profile.png'}
+                                        {#if searchPhotoUrls[user.username]}
+                                            <img src={searchPhotoUrls[user.username]} alt={user.username} />
+                                        {:else if user.photo_url && user.photo_url !== 'assets/default_profile.png'}
                                             <img src={`${API_URL}/${user.username}/photo`} alt={user.username} />
                                         {:else}
                                             <div class="avatar-placeholder-small">{user.name ? user.name[0].toUpperCase() : 'U'}</div>
@@ -621,12 +847,18 @@
             {:else if activeTab === "friends"}
                 {#if loadingFriends}
                     <div class="loading-spinner">Loading friends...</div>
-                {:else if friendsList.length > 0}
+                        {:else if friendsList.length > 0}
                     <div class="results-grid">
                         {#each friendsList as friend}
                             <div class="user-card" on:click={() => viewUserProfile(friend.username)}>
                                 <div class="user-avatar-small">
-                                    <div class="avatar-placeholder-small">{friend.name ? friend.name[0].toUpperCase() : 'U'}</div>
+                                    {#if friendsPhotoUrls[friend.username]}
+                                        <img src={friendsPhotoUrls[friend.username]} alt={friend.username} />
+                                    {:else if friend.photo_url && friend.photo_url !== 'assets/default_profile.png'}
+                                        <img src={`${API_URL}/${friend.username}/photo`} alt={friend.username} />
+                                    {:else}
+                                        <div class="avatar-placeholder-small">{friend.name ? friend.name[0].toUpperCase() : 'U'}</div>
+                                    {/if}
                                 </div>
                                 <div class="user-details">
                                     <h4>{friend.name}</h4>
@@ -682,20 +914,44 @@
                             {#if profileData.is_owner}
                                 <button class="btn-secondary" on:click={() => isEditModalOpen = true}>Edit Profile</button>
                                 <button class="btn-secondary" on:click={() => isPhotoModalOpen = true}>Change Photo</button>
+                                <div class="settings-menu">
+                                    <button
+                                        type="button"
+                                        class="settings-trigger"
+                                        aria-haspopup="menu"
+                                        aria-expanded={isSettingsMenuOpen}
+                                        on:click={() => isSettingsMenuOpen = !isSettingsMenuOpen}>
+                                        ⚙
+                                    </button>
+
+                                    {#if isSettingsMenuOpen}
+                                        <div class="settings-dropdown" role="menu">
+                                            <button type="button" on:click={() => openSettingsAction("password")}>Change Password</button>
+                                            <button type="button" on:click={() => openSettingsAction("email")}>Change Email</button>
+                                            <button type="button" on:click={() => openSettingsAction("phone")}>Change Phone</button>
+                                        </div>
+                                    {/if}
+                                </div>
                             {:else if profileData.they_blocked_me}
                                 <button class="btn-secondary" disabled>You got blocked</button>
-                            {:else if profileData.i_blocked_them}
-                                <button class="btn-secondary" on:click={handleUnblockUser}>Unblock User</button>
-                            {:else if profileData.is_friends}
-                                <button class="btn-secondary danger" on:click={handleRemoveFriendship}>Remove Friend</button>
-                                <button class="btn-secondary" on:click={handleBlockUser}>Block User</button>
-                            {:else if profileData.has_sent_friendship_request}
-                                <button class="btn-primary" on:click={handleAcceptRequest}>Accept Request</button>
-                                <button class="btn-secondary" on:click={handleRejectRequest}>Reject Request</button>
-                            {:else if profileData.has_received_friendship_request}
-                                <button class="btn-secondary" disabled>Friend Request Pending</button>
                             {:else}
-                                <button class="btn-primary" on:click={handleSendRequest}>Add Friend</button>
+                                {#if profileData.i_blocked_them}
+                                    <button class="btn-secondary" on:click={handleUnblockUser}>Unblock User</button>
+                                {:else}
+                                    {#if profileData.is_friends}
+                                        <button class="btn-primary" on:click={() => { /* message no-op for now */ }}>Message</button>
+                                        <button class="btn-secondary danger" on:click={handleRemoveFriendship}>Remove Friend</button>
+                                    {:else if profileData.has_sent_friendship_request}
+                                        <button class="btn-primary" on:click={handleAcceptRequest}>Accept Request</button>
+                                        <button class="btn-secondary" on:click={handleRejectRequest}>Reject Request</button>
+                                    {:else if profileData.has_received_friendship_request}
+                                        <button class="btn-secondary" on:click={handleRemoveFriendRequest}>Cancel Request</button>
+                                    {:else}
+                                        <button class="btn-primary" on:click={handleSendRequest}>Add Friend</button>
+                                    {/if}
+
+                                    <button class="btn-secondary" on:click={handleBlockUser}>Block User</button>
+                                {/if}
                             {/if}
                         </div>
 
@@ -778,6 +1034,100 @@
                 <div class="modal-actions">
                     <button class="btn-secondary" on:click={() => isPhotoModalOpen = false}>Cancel</button>
                     <button class="btn-primary" on:click={handleUpdatePhoto} disabled={!photoFile}>Upload</button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    {#if isSettingsModalOpen}
+        <div class="modal-overlay">
+            <div class="modal-card settings-modal">
+                <h3>
+                    {#if settingsAction === "password"}
+                        Change Password
+                    {:else if settingsAction === "email"}
+                        Change Email
+                    {:else}
+                        Change Phone
+                    {/if}
+                </h3>
+
+                <p class="modal-copy">Enter your current password and the new value in the same form.</p>
+
+                <input
+                    type="password"
+                    placeholder="Current password"
+                    bind:value={settingsCurrentPassword}
+                    disabled={settingsLoading}
+                />
+
+                {#if settingsAction === "password"}
+                    <input
+                        type="password"
+                        placeholder="New password"
+                        bind:value={settingsNewValue}
+                        disabled={settingsLoading}
+                    />
+                    <input
+                        type="password"
+                        placeholder="Confirm new password"
+                        bind:value={settingsConfirmValue}
+                        disabled={settingsLoading}
+                    />
+                {:else if settingsAction === "email"}
+                    <input
+                        type="email"
+                        placeholder="New email"
+                        bind:value={settingsNewValue}
+                        disabled={settingsLoading}
+                    />
+                {:else}
+                    <div class="phone-group settings-phone-group">
+                        <div class="custom-select prefix-select settings-prefix-select">
+                            <button type="button" class="select-btn" on:click={() => settingsPhoneDropdownOpen = !settingsPhoneDropdownOpen} disabled={settingsLoading}>
+                                <span class="fi fi-{countries.find(c => c.dial_code === settingsPhonePrefix)?.lowerCode}"></span>
+                                <span>{settingsPhonePrefix}</span>
+                            </button>
+
+                            {#if settingsPhoneDropdownOpen}
+                                <div class="dropdown-menu">
+                                    <input
+                                        type="text"
+                                        class="search-input"
+                                        placeholder="Search code..."
+                                        bind:value={settingsPhoneSearch}
+                                        autofocus
+                                    />
+                                    <div class="options-list">
+                                        {#each filteredSettingsPhoneCountries as c}
+                                            <button type="button" class="option-item" on:click={() => selectSettingsPhoneCountry(c)}>
+                                                <span class="fi fi-{c.lowerCode}"></span>
+                                                <span class="opt-text">{c.name} ({c.dial_code})</span>
+                                            </button>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/if}
+                        </div>
+
+                        <input
+                            type="tel"
+                            placeholder="New phone number"
+                            bind:value={settingsPhoneNumber}
+                            disabled={settingsLoading}
+                        />
+                    </div>
+                {/if}
+
+                {#if settingsError}
+                    <div class="modal-error">{settingsError}</div>
+                {/if}
+
+                <div class="modal-actions">
+                    <button class="btn-secondary" type="button" on:click={closeSettingsModal} disabled={settingsLoading}>Cancel</button>
+                    <button class="btn-primary" type="button" on:click={handleSettingsSave} disabled={settingsLoading}>
+                        {settingsLoading ? "Saving..." : "Save Changes"}
+                    </button>
                 </div>
             </div>
         </div>
@@ -1553,6 +1903,7 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
 .action-bar {
     display: flex;
     gap: 0.8rem;
+    align-items: stretch;
 }
 
 .action-bar button {
@@ -1591,6 +1942,62 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     cursor: not-allowed;
 }
 
+.settings-menu {
+    position: relative;
+    flex: 0 0 auto;
+}
+
+.settings-trigger {
+    width: 48px;
+    min-width: 48px;
+    height: 100%;
+    flex: 0 0 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    color: var(--primary-teal);
+    background: #0D172A;
+}
+
+.settings-trigger:hover {
+    border-color: var(--primary-teal);
+}
+
+.settings-dropdown {
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    right: 0;
+    min-width: 180px;
+    padding: 0.45rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background: #121D30;
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.35);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.settings-dropdown button {
+    flex: initial;
+    width: 100%;
+    padding: 0.7rem 0.8rem;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-color);
+    text-align: left;
+}
+
+.settings-dropdown button:hover {
+    background: rgba(0, 163, 196, 0.12);
+    color: #FFFFFF;
+}
+
 .loading-spinner {
     text-align: center;
     color: var(--text-muted);
@@ -1620,9 +2027,31 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     max-width: 420px;
 }
 
+.settings-modal {
+    max-width: 460px;
+}
+
 .modal-card h3 {
     margin-top: 0;
     margin-bottom: 1rem;
+}
+
+.modal-copy {
+    margin: -0.25rem 0 1rem 0;
+    color: var(--text-muted);
+    font-size: 0.92rem;
+    line-height: 1.4;
+}
+
+.modal-error {
+    margin-top: 0.75rem;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid var(--error-red);
+    color: #FCA5A5;
+    padding: 0.7rem 0.8rem;
+    border-radius: 8px;
+    word-break: break-word;
+    font-size: 0.9rem;
 }
 
 .modal-actions {

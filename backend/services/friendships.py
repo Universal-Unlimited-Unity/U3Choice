@@ -87,10 +87,6 @@ async def accept_friendship_request(sender_id: UUID, receiver_id: UUID, username
         result = conn.execute(stmt).first()
     if not result:
         raise FriendRequestNotFound("Friendship request not found")
-    user1_profile = await get_user_profile_BY_ID(sender_id)
-    user2_profile = await get_user_profile_BY_ID(receiver_id)
-    await refresh_user_friends_cashe(user1_profile.username)
-    await refresh_user_friends_cashe(user2_profile.username)
 
     with eng.begin() as conn:
         stmt = friendships_table.update().where(
