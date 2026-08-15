@@ -7,6 +7,9 @@ from typing import Annotated
 from services.authentification import verify_token
 from services.friendships import check_friendship_request_exists, is_blocked_friendship_exists, remove_friendship, did_they_blocked_me
 from services.security import update_cach_key
+from services.notifications import save_notification
+from schemas.notifications import Notification, Type
+from .notifications_ws import user_queues
 router = APIRouter(prefix="/friendships", tags=["friendships"])
 
 
@@ -25,6 +28,14 @@ async def send_request(friendship: Annotated[Friendships, Body()], user: Annotat
     if requested_profile1.status != "Active" or requested_profile2.status != "Active":
         raise HTTPException(status_code=403, detail="One or both users are suspended")
     await send_friendship_request(friendship, requested_profile2.username, requested_profile1.username)
+    notification = Notification(
+        root_id=friendship.sender_id,
+        concerned_id=friendship.receiver_id,
+        type=Type.Sent
+    )
+    await save_notification(notification)
+    if notification.concerned_id in user_queues:
+        await user_queues[notification.concerned_id].put(notification.model_dump())
     return {"message": "Friendship request sent successfully"}
 
 @router.post("/accept_request")
@@ -39,6 +50,14 @@ async def accept_request(friendship: Annotated[Friendships_short, Body()], user:
         raise HTTPException(status_code=403, detail="One or both users are suspended")
     try:
         await accept_friendship_request(friendship.sender_id, friendship.receiver_id, requested_profile1.username, requested_profile2.username)
+        notification = Notification(
+            root_id=friendship.receiver_id,
+            concerned_id=friendship.sender_id,
+            type=Type.Accept
+        )
+        await save_notification(notification)
+        if notification.concerned_id in user_queues:
+            await user_queues[notification.concerned_id].put(notification.model_dump())
         return {"message": "Friendship request accepted successfully"}
     except FriendRequestNotFound:
         raise HTTPException(status_code=404, detail="Friendship request not found")

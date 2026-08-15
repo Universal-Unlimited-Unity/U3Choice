@@ -3,10 +3,11 @@ from .endpoints.authentification import auth_router
 from .endpoints.users import router as users_router
 from .endpoints.friendships import router as friendships_router
 from .endpoints.search_engine import search_router
+from .endpoints.messages import router as messages_router
 from database import init_db
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-
+from .endpoints.notifications_ws import router as notifications_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,3 +32,5 @@ app.include_router(users_router)
 app.include_router(friendships_router)
 app.include_router(auth_router)
 app.include_router(search_router)
+app.include_router(notifications_router)
+app.include_router(messages_router)

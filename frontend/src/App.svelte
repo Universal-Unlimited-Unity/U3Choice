@@ -22,10 +22,18 @@
         UnblockFriend 
     } from "./lib/api/friendships";
     import { fetchParseHandlerForFiles } from "./lib/api/http";
+    import { getMessagesBetweenUsers, sendMessage } from "./lib/api/messages";
     import CountryData from "country-list-with-dial-code-and-flag";
     import logo from "./assets/logo.png";
 
     const API_URL = import.meta.env.VITE_API_URL;
+    const WS_URL = import.meta.env.VITE_WS_URL || (
+        API_URL?.startsWith('https://')
+            ? API_URL.replace('https://', 'wss://')
+            : API_URL?.startsWith('http://')
+                ? API_URL.replace('http://', 'ws://')
+                : 'ws://localhost:8000'
+    );
 
     const rawCountries = Array.isArray(CountryData) 
         ? CountryData 
@@ -48,6 +56,7 @@
         phone: "",
         name: "",
         pwd_hash: "",
+        confirm_password: "",
         dob: "",
         gender: "",
         country: "US"
@@ -65,6 +74,12 @@
     let redirectTimer = null;
     let invalidFields = {}; 
     let token = localStorage.getItem("token");
+    let notifications = [];
+    let notificationLoading = false;
+    let notificationSocket = null;
+    let notificationsSessionRunning = false;
+    let notificationReconnectTimer = null;
+    let notificationAvatarUrls = {};
 
     // Authenticated App State
     let activeTab = "profile";
@@ -88,6 +103,18 @@
     let friendsList = [];
     let totalFriends = 0;
     let loadingFriends = false;
+
+    // Messages State
+    let isMessagesModalOpen = false;
+    let activeChatUser = null;
+    let activeChatUserPhotoUrl = null;
+    let chatMessages = [];
+    let chatDraft = "";
+    let isChatLoading = false;
+    let isChatSending = false;
+    let messageSocket = null;
+    let messagesSessionRunning = false;
+    let messageReconnectTimer = null;
 
     // Edit Profile Modal State
     let isEditModalOpen = false;
@@ -177,6 +204,11 @@
         return payload?.username || null;
     }
 
+    function getMyUserId() {
+        const payload = getPayloadFromToken(token);
+        return payload?.id || null;
+    }
+
     function getUsernameFromPath() {
         const path = window.location.pathname.replace(/^\/+|\/+$/g, "");
         if (!path) return null;
@@ -185,6 +217,194 @@
     }
 
     activeProfileUsername = getUsernameFromPath();
+
+    function normalizeNotification(notification) {
+        if (!notification) return null;
+
+        const rootUser = notification.root_user || notification.rootUser || null;
+        const rootUsername = rootUser?.username || notification.root_username || notification.rootUsername || null;
+        const type = String(notification?.type || '').trim().toLowerCase();
+
+        const fallbackMessage =
+            type === 'sent'
+                ? 'sent you a friend request'
+                : type === 'accept' || type === 'accepted'
+                    ? 'accepted your request'
+                    : 'updated their status';
+
+        return {
+            ...notification,
+            type,
+            root_id: notification.root_id || rootUser?.id || null,
+            root_username: rootUsername,
+            root_user: rootUser,
+            message: notification.message || fallbackMessage
+        };
+    }
+
+    function getNotificationType(notification) {
+        return String(notification?.type || '').trim().toLowerCase();
+    }
+
+    function getFriendlyNotificationText(notification) {
+        const normalized = normalizeNotification(notification);
+        const type = getNotificationType(normalized);
+        const rootUsername = normalized?.root_username;
+        const message = String(normalized?.message || '').trim();
+
+        if (type === 'sent' || /request/i.test(message)) {
+            if (rootUsername) return `@${rootUsername} sent you a friend request`;
+            return 'Someone sent you a friend request';
+        }
+
+        if (type === 'accept' || type === 'accepted' || /accepted/i.test(message)) {
+            if (rootUsername) return `@${rootUsername} accepted your request`;
+            return 'Someone accepted your request';
+        }
+
+        if (rootUsername) return `@${rootUsername} ${message || 'updated their status'}`;
+        return message || 'New notification';
+    }
+
+    function isNotificationClickable(notification) {
+        const normalized = normalizeNotification(notification);
+        const type = getNotificationType(normalized);
+        return (type === 'sent' || type === 'accept' || type === 'accepted') && !!normalized?.root_username;
+    }
+
+    async function hydrateNotificationPhotos(notificationList = []) {
+        if (!Array.isArray(notificationList) || !notificationList.length || !token) return;
+
+        const uniqueUsernames = [...new Set(
+            notificationList
+                .map((notification) => normalizeNotification(notification)?.root_username)
+                .filter(Boolean)
+        )];
+
+        for (const username of uniqueUsernames) {
+            if (!notificationAvatarUrls[username]) {
+                try {
+                    const url = await getPhotoUrl(token, username);
+                    if (url) {
+                        notificationAvatarUrls[username] = url;
+                    }
+                } catch (e) {
+                    // ignore per-user photo issues
+                }
+            }
+        }
+    }
+
+    async function loadNotifications() {
+        const myUserId = getMyUserId();
+        if (!token || !myUserId) return;
+
+        notificationLoading = true;
+        try {
+            const response = await fetch(`${API_URL}/notifications/${myUserId}`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    window.dispatchEvent(new CustomEvent('u3:logout', { detail: { reason: 'Session expired. Please sign in again.' } }));
+                }
+                notifications = [];
+                return;
+            }
+
+            const data = await response.json();
+            const rawNotifications = Array.isArray(data) ? data : Array.isArray(data?.notifications) ? data.notifications : [];
+            notifications = rawNotifications
+                .map((item) => normalizeNotification(item))
+                .filter(Boolean);
+
+            await hydrateNotificationPhotos(notifications);
+        } catch (err) {
+            console.error('Failed to load notifications:', err);
+            notifications = [];
+        } finally {
+            notificationLoading = false;
+        }
+    }
+
+    function startNotificationsSession() {
+        if (!token) return;
+
+        const myUserId = getMyUserId();
+        if (!myUserId) return;
+        if (notificationsSessionRunning) return;
+        if (notificationSocket && notificationSocket.readyState === WebSocket.OPEN) return;
+
+        notificationsSessionRunning = true;
+        loadNotifications().finally(() => {
+            if (!token) {
+                notificationsSessionRunning = false;
+                return;
+            }
+
+            if (!notificationSocket || notificationSocket.readyState === WebSocket.CLOSED) {
+                connectNotificationsSocket();
+            }
+
+            notificationsSessionRunning = false;
+        });
+    }
+
+    function closeNotificationsSocket() {
+        if (notificationReconnectTimer) {
+            clearTimeout(notificationReconnectTimer);
+            notificationReconnectTimer = null;
+        }
+
+        if (notificationSocket) {
+            try {
+                notificationSocket.onclose = null;
+                notificationSocket.close();
+            } catch (e) {}
+            notificationSocket = null;
+        }
+    }
+
+    function connectNotificationsSocket() {
+        const myUserId = getMyUserId();
+        if (!token || !myUserId) return;
+        if (notificationSocket && (notificationSocket.readyState === WebSocket.OPEN || notificationSocket.readyState === WebSocket.CONNECTING)) return;
+
+        const socketUrl = `${WS_URL}/notifications/ws/${myUserId}?token=${encodeURIComponent(token)}`;
+        notificationSocket = new WebSocket(socketUrl);
+
+        notificationSocket.onmessage = async (event) => {
+            try {
+                const payload = JSON.parse(event.data);
+                const normalized = normalizeNotification(payload);
+                if (normalized) {
+                    notifications = [normalized, ...notifications.filter(item => String(item.id) !== String(payload.id))];
+                    if (!normalized.root_user && normalized.root_id) {
+                        await loadNotifications();
+                    } else {
+                        await hydrateNotificationPhotos(notifications.slice(0, 20));
+                    }
+                } else {
+                    await loadNotifications();
+                }
+            } catch (err) {
+                console.error('Invalid notification payload', err);
+            }
+        };
+
+        notificationSocket.onclose = () => {
+            notificationSocket = null;
+            if (!token) return;
+            notificationReconnectTimer = setTimeout(() => {
+                if (token && !notificationSocket) {
+                    startNotificationsSession();
+                }
+            }, 2000);
+        };
+    }
 
     async function fetchUserProfile(targetUsername = null) {
         if (!token) return;
@@ -443,6 +663,163 @@
         }
     }
 
+    async function openMessageThread(user = null) {
+        const targetUser = user || {
+            id: profileData?.viwed_id || profileData?.id,
+            username: profileData?.username,
+            name: profileData?.name
+        };
+
+        if (!token || !targetUser?.id || !targetUser?.username) return;
+
+        activeChatUser = targetUser;
+        chatDraft = "";
+        chatMessages = [];
+        isMessagesModalOpen = true;
+        isChatLoading = true;
+
+        const myUserId = getMyUserId();
+        if (myUserId) {
+            const socketUrl = `${WS_URL}/messages/ws/${myUserId}?token=${encodeURIComponent(token)}`;
+            if (!messageSocket || messageSocket.readyState === WebSocket.CLOSED) {
+                console.log("Opening message websocket:", socketUrl);
+                connectMessagesSocket();
+            }
+        }
+
+        try {
+            const myUserId = getMyUserId();
+            const payload = await getMessagesBetweenUsers(token, myUserId, targetUser.id);
+            chatMessages = Array.isArray(payload) ? payload : [];
+
+            const photoUrl = await getPhotoUrl(token, targetUser.username);
+            activeChatUserPhotoUrl = photoUrl || null;
+        } catch (err) {
+            console.error("Failed to load conversation:", err);
+            chatMessages = [];
+            activeChatUserPhotoUrl = null;
+        } finally {
+            isChatLoading = false;
+        }
+    }
+
+    async function handleSendMessage() {
+        if (!token || !activeChatUser?.id || !chatDraft.trim()) return;
+
+        isChatSending = true;
+        const myUserId = getMyUserId();
+        const messageContent = chatDraft.trim();
+
+        try {
+            const nextMessageId = typeof crypto !== "undefined" && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+            const optimisticMessage = {
+                id: nextMessageId,
+                sender_id: String(myUserId),
+                receiver_id: String(activeChatUser.id),
+                content: messageContent,
+                created_at: new Date().toISOString()
+            };
+
+            chatMessages = [...chatMessages, optimisticMessage];
+            chatDraft = "";
+
+            await sendMessage(token, optimisticMessage);
+
+            const refreshed = await getMessagesBetweenUsers(token, myUserId, activeChatUser.id);
+            chatMessages = Array.isArray(refreshed) ? refreshed : chatMessages;
+        } catch (err) {
+            console.error("Failed to send message:", err);
+            error = err?.detail || "Your message could not be sent.";
+        } finally {
+            isChatSending = false;
+        }
+    }
+
+    function closeMessageSocket() {
+        if (messageReconnectTimer) {
+            clearTimeout(messageReconnectTimer);
+            messageReconnectTimer = null;
+        }
+
+        if (messageSocket) {
+            try {
+                messageSocket.onclose = null;
+                messageSocket.close();
+            } catch (e) {}
+            messageSocket = null;
+        }
+
+        messagesSessionRunning = false;
+    }
+
+    function connectMessagesSocket() {
+        const myUserId = getMyUserId();
+        if (!token || !myUserId) return;
+        if (messageSocket && (messageSocket.readyState === WebSocket.OPEN || messageSocket.readyState === WebSocket.CONNECTING)) return;
+        if (messagesSessionRunning && messageSocket) return;
+
+        messagesSessionRunning = true;
+
+        const socketUrl = `${WS_URL}/messages/ws/${myUserId}?token=${encodeURIComponent(token)}`;
+        messageSocket = new WebSocket(socketUrl);
+
+        messageSocket.onopen = () => {
+            console.log("Message websocket connected for user:", myUserId);
+        };
+
+        messageSocket.onerror = (event) => {
+            console.error("Message websocket error:", event);
+        };
+
+        messageSocket.onmessage = (event) => {
+            try {
+                const incoming = JSON.parse(event.data);
+                if (!incoming || !incoming.content) return;
+
+                const incomingId = String(incoming.sender_id || "");
+                const incomingReceiverId = String(incoming.receiver_id || "");
+                const myId = String(myUserId);
+                const activeId = activeChatUser ? String(activeChatUser.id) : "";
+                const isForCurrentChat =
+                    (incomingId === myId && incomingReceiverId === activeId) ||
+                    (incomingId === activeId && incomingReceiverId === myId);
+
+                if (activeChatUser && isForCurrentChat) {
+                    const exists = chatMessages.some((msg) => String(msg.id) === String(incoming.id));
+                    if (!exists) {
+                        chatMessages = [...chatMessages, incoming];
+                    }
+                }
+            } catch (err) {
+                console.error("Invalid message payload", err);
+            }
+        };
+
+        messageSocket.onclose = () => {
+            messageSocket = null;
+            messagesSessionRunning = false;
+            if (!token) return;
+            messageReconnectTimer = setTimeout(() => {
+                if (token && !messageSocket) {
+                    connectMessagesSocket();
+                }
+            }, 2000);
+        };
+    }
+
+    function closeMessageThread() {
+        isMessagesModalOpen = false;
+        activeChatUser = null;
+        activeChatUserPhotoUrl = null;
+        chatMessages = [];
+        chatDraft = "";
+        isChatLoading = false;
+        isChatSending = false;
+    }
+
     async function handleUpdateProfile() {
         const myUsername = getMyUsername();
         if (!myUsername) return;
@@ -626,9 +1003,17 @@
         if (!signupForm.email.trim()) { invalidFields.email = true; missing.push("email"); }
         if (!rawPhoneNumber.trim()) { invalidFields.phone = true; missing.push("phone number"); }
         if (!signupForm.pwd_hash.trim()) { invalidFields.pwd_hash = true; missing.push("password"); }
+        if (!signupForm.confirm_password.trim()) { invalidFields.confirm_password = true; missing.push("confirm password"); }
         if (!signupForm.dob.trim()) { invalidFields.dob = true; missing.push("date of birth"); }
         if (!signupForm.gender.trim()) { invalidFields.gender = true; missing.push("gender"); }
         if (!signupForm.country.trim()) { invalidFields.country = true; missing.push("country"); }
+
+        if (signupForm.pwd_hash.trim() && signupForm.confirm_password.trim() && signupForm.pwd_hash !== signupForm.confirm_password) {
+            invalidFields.pwd_hash = true;
+            invalidFields.confirm_password = true;
+            error = "Passwords do not match.";
+            return false;
+        }
 
         if (missing.length > 0) {
             error = `Please fill in all required fields (${missing.join(", ")}).`;
@@ -658,6 +1043,7 @@
         mode = "signin";
         signinForm.email = signupForm.email;
         signinForm.pwd = "";
+        signupForm.confirm_password = "";
         successMessage = "";
         invalidFields = {};
     }
@@ -714,6 +1100,9 @@
             token = data.token;
             localStorage.setItem("token", token);
             invalidFields = {};
+            setTimeout(() => {
+                ensureRealtimeSessions();
+            }, 200);
             viewMyProfile();
         } catch (err) {
             if (err?.detail === "INVALID_CREDENTIALS") {
@@ -729,8 +1118,38 @@
         loading = false;
     }
 
+    function handleNotificationClick(notification) {
+        if (!notification) return;
+        const normalized = normalizeNotification(notification);
+        const targetUsername = normalized?.root_username || normalized?.root_user?.username;
+        if (targetUsername) {
+            viewUserProfile(targetUsername);
+            activeTab = 'profile';
+        }
+    }
+
+    function ensureRealtimeSessions() {
+        if (!token) return;
+
+        const myUserId = getMyUserId();
+        if (!myUserId) return;
+
+        if (!notificationSocket || notificationSocket.readyState === WebSocket.CLOSED) {
+            startNotificationsSession();
+        }
+
+        if (!messageSocket || messageSocket.readyState === WebSocket.CLOSED) {
+            connectMessagesSocket();
+        }
+    }
+
     function logout() {
         localStorage.removeItem("token");
+        notificationsSessionRunning = false;
+        messagesSessionRunning = false;
+        closeNotificationsSocket();
+        closeMessageSocket();
+        notifications = [];
         if (profilePhotoUrl) URL.revokeObjectURL(profilePhotoUrl);
         token = null;
         profileData = null;
@@ -748,11 +1167,33 @@
 
     onMount(() => {
         window.addEventListener('u3:logout', _u3_unauth_handler);
+        if (token && getMyUserId()) {
+            setTimeout(() => {
+                ensureRealtimeSessions();
+            }, 200);
+        }
     });
 
     onDestroy(() => {
+        closeNotificationsSocket();
+        closeMessageSocket();
         window.removeEventListener('u3:logout', _u3_unauth_handler);
     });
+
+    $: if (token && getMyUserId()) {
+        if (!notificationSocket || notificationSocket.readyState === WebSocket.CLOSED) {
+            setTimeout(() => startNotificationsSession(), 200);
+        }
+        if (!messageSocket || messageSocket.readyState === WebSocket.CLOSED) {
+            setTimeout(() => connectMessagesSocket(), 200);
+        }
+    } else if (!token) {
+        notificationsSessionRunning = false;
+        messagesSessionRunning = false;
+        closeNotificationsSocket();
+        closeMessageSocket();
+        notifications = [];
+    }
 </script>
 
 <svelte:head>
@@ -782,6 +1223,8 @@
                 <h2>Explore Users</h2>
             {:else if activeTab === 'friends'}
                 <h2>My Friends ({totalFriends})</h2>
+            {:else if activeTab === 'notifications'}
+                <h2>Notifications</h2>
             {:else}
                 <h2>Profile</h2>
             {/if}
@@ -875,6 +1318,50 @@
                     </div>
                 {/if}
 
+            {:else if activeTab === "notifications"}
+                <div class="notification-panel">
+                    {#if notificationLoading}
+                        <div class="loading-spinner">Loading notifications...</div>
+                    {:else if notifications.length > 0}
+                        {#each notifications as notification}
+                            {@const normalized = normalizeNotification(notification)}
+                            {@const rootUser = normalized?.root_user}
+                            {@const rootUsername = normalized?.root_username || rootUser?.username || 'User'}
+                            {@const canOpenProfile = isNotificationClickable(normalized)}
+                            <button
+                                type="button"
+                                class="notification-item"
+                                class:clickable={canOpenProfile}
+                                on:click={() => handleNotificationClick(normalized)}
+                            >
+                                <div class="notification-avatar">
+                                    {#if notificationAvatarUrls[rootUsername]}
+                                        <img src={notificationAvatarUrls[rootUsername]} alt={rootUsername} />
+                                    {:else if rootUser?.photo_url}
+                                        <img src={`${API_URL}/${rootUsername}/photo`} alt={rootUsername} />
+                                    {:else}
+                                        <div class="avatar-placeholder-small">{rootUsername.charAt(0).toUpperCase()}</div>
+                                    {/if}
+                                </div>
+                                <div class="notification-text-wrap">
+                                    <strong>@{rootUsername}</strong>
+                                    <span>{getFriendlyNotificationText(normalized)}</span>
+                                    <small>{normalized?.created_at ? new Date(normalized.created_at).toLocaleString() : 'just now'}</small>
+                                </div>
+                                {#if canOpenProfile}
+                                    <span class="notification-pill">Open profile</span>
+                                {/if}
+                            </button>
+                        {/each}
+                    {:else}
+                        <div class="empty-state">
+                            <span class="icon">🔔</span>
+                            <h3>No notifications yet</h3>
+                            <p>Requests and accepts will show up here.</p>
+                        </div>
+                    {/if}
+                </div>
+
             {:else if activeTab === "profile"}
                 {#if loadingProfile}
                     <div class="loading-spinner">Loading Profile...</div>
@@ -939,7 +1426,11 @@
                                     <button class="btn-secondary" on:click={handleUnblockUser}>Unblock User</button>
                                 {:else}
                                     {#if profileData.is_friends}
-                                        <button class="btn-primary" on:click={() => { /* message no-op for now */ }}>Message</button>
+                                        <button class="btn-primary" on:click={() => openMessageThread({
+                                            id: profileData.viwed_id,
+                                            username: profileData.username,
+                                            name: profileData.name
+                                        })}>Message</button>
                                         <button class="btn-secondary danger" on:click={handleRemoveFriendship}>Remove Friend</button>
                                     {:else if profileData.has_sent_friendship_request}
                                         <button class="btn-primary" on:click={handleAcceptRequest}>Accept Request</button>
@@ -983,6 +1474,14 @@
                 on:click={() => activeTab = 'friends'}>
                 <span class="nav-icon">👥</span>
                 <span class="nav-label">Friends</span>
+            </button>
+
+            <button 
+                class="nav-item" 
+                class:active={activeTab === 'notifications'} 
+                on:click={() => { activeTab = 'notifications'; loadNotifications(); }}>
+                <span class="nav-icon">🔔</span>
+                <span class="nav-label">Alerts</span>
             </button>
 
             <button 
@@ -1034,6 +1533,55 @@
                 <div class="modal-actions">
                     <button class="btn-secondary" on:click={() => isPhotoModalOpen = false}>Cancel</button>
                     <button class="btn-primary" on:click={handleUpdatePhoto} disabled={!photoFile}>Upload</button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    {#if isMessagesModalOpen && activeChatUser}
+        <div class="modal-overlay" on:click={closeMessageThread}>
+            <div class="modal-card chat-modal" on:click|stopPropagation>
+                <div class="chat-header">
+                    <div class="chat-user-meta">
+                        {#if activeChatUserPhotoUrl}
+                            <img src={activeChatUserPhotoUrl} alt={activeChatUser.username} class="chat-avatar" />
+                        {:else}
+                            <div class="avatar-placeholder-small">{activeChatUser.name ? activeChatUser.name[0].toUpperCase() : 'U'}</div>
+                        {/if}
+                        <div>
+                            <h3>{activeChatUser.name || activeChatUser.username}</h3>
+                            <p>@{activeChatUser.username}</p>
+                        </div>
+                    </div>
+                    <button class="btn-secondary" on:click={closeMessageThread}>Close</button>
+                </div>
+
+                <div class="chat-thread">
+                    {#if isChatLoading}
+                        <div class="loading-spinner">Loading messages...</div>
+                    {:else if chatMessages.length > 0}
+                        {#each chatMessages as message}
+                            {@const mine = String(message.sender_id) === String(getMyUserId())}
+                            <div class="chat-bubble-wrap" class:mine={mine}>
+                                <div class="chat-bubble" class:mine={mine}>
+                                    <span>{message.content}</span>
+                                    <small>{message.created_at ? new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>
+                                </div>
+                            </div>
+                        {/each}
+                    {:else}
+                        <div class="empty-state compact">
+                            <span class="icon">💬</span>
+                            <p>Say hello and start the conversation.</p>
+                        </div>
+                    {/if}
+                </div>
+
+                <div class="chat-composer">
+                    <textarea rows="3" bind:value={chatDraft} placeholder="Write a message..." maxlength="500"></textarea>
+                    <button class="btn-primary chat-send-btn" on:click={handleSendMessage} disabled={isChatSending || !chatDraft.trim()}>
+                        {isChatSending ? "Sending..." : "Send"}
+                    </button>
                 </div>
             </div>
         </div>
@@ -1224,6 +1772,13 @@
             placeholder="Password *"
         >
 
+        <input
+            class:invalid={invalidFields.confirm_password}
+            bind:value={signupForm.confirm_password}
+            type="password"
+            placeholder="Confirm Password *"
+        >
+
         <div class="field-container">
             <label for="dob-input" class="field-label">Date of Birth *</label>
             <input
@@ -1313,23 +1868,31 @@
 
 <style>
 :root {
-    --bg-color: #0B1325;
-    --card-bg: #152238;
-    --text-color: #E2E8F0;
-    --text-muted: #94A3B8;
-    --border-color: #2D3E50;
-    --primary-teal: #00A3C4;
-    --primary-teal-hover: #0082A0;
-    --gradient-btn: linear-gradient(135deg, #00A3C4 0%, #0068A8 100%);
-    --gradient-btn-hover: linear-gradient(135deg, #00BBE2 0%, #007CC9 100%);
-    --error-red: #EF4444;
-    --success-teal: #10B981;
+    --bg-color: #07111f;
+    --bg-accent: #101a31;
+    --card-bg: rgba(15, 23, 42, 0.92);
+    --card-elevated: rgba(18, 32, 55, 0.95);
+    --text-color: #edf6ff;
+    --text-muted: #9cc6ea;
+    --border-color: rgba(124, 211, 252, 0.25);
+    --primary-teal: #38bdf8;
+    --primary-teal-hover: #0ea5e9;
+    --primary-violet: #8b5cf6;
+    --primary-pink: #ec4899;
+    --gradient-btn: linear-gradient(135deg, #38bdf8 0%, #8b5cf6 50%, #ec4899 100%);
+    --gradient-btn-hover: linear-gradient(135deg, #0ea5e9 0%, #7c3aed 50%, #db2777 100%);
+    --error-red: #f87171;
+    --success-teal: #34d399;
+    --glow: 0 0 0 1px rgba(56, 189, 248, 0.3), 0 24px 48px rgba(14, 165, 233, 0.2);
 }
 
 :global(body){
     margin: 0;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: var(--bg-color);
+    background:
+        radial-gradient(circle at top left, rgba(56, 189, 248, 0.25), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(236, 72, 153, 0.2), transparent 30%),
+        linear-gradient(135deg, var(--bg-color) 0%, var(--bg-accent) 100%);
     color: var(--text-color);
 }
 
@@ -1359,13 +1922,13 @@
 }
 
 .card{
-    width: 100%;
-    max-width: 460px;
+    width: min(100%, 500px);
     background: var(--card-bg);
     padding: 2.2rem;
-    border-radius: 16px;
+    border-radius: 20px;
     border: 1px solid var(--border-color);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--glow);
+    backdrop-filter: blur(12px);
 }
 
 h1{
@@ -1631,17 +2194,16 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
 }
 
 .app-screen {
-    width: 100%;
-    max-width: 900px;
-    min-height: 650px;
-    height: 85vh;
-    background: var(--card-bg);
+    width: min(100%, 1180px);
+    min-height: 760px;
+    height: min(88vh, 860px);
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.92));
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: 22px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 24px 64px rgba(11, 18, 32, 0.55), 0 0 0 1px rgba(56, 189, 248, 0.2);
     position: relative;
 }
 
@@ -1741,6 +2303,115 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     gap: 1rem;
 }
 
+.notification-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    max-width: 820px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.notification-item {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 1rem 1rem 1rem 0.8rem;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    background: linear-gradient(135deg, rgba(19, 41, 66, 0.9), rgba(19, 33, 52, 0.9));
+    color: var(--text-color);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    text-align: left;
+    width: 100%;
+}
+
+.notification-item.clickable {
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.notification-item.clickable:hover {
+    transform: translateY(-1px);
+    border-color: rgba(56, 189, 248, 0.7);
+}
+
+.notification-item {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 1rem 1rem 1rem 0.8rem;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    background: linear-gradient(135deg, rgba(19, 41, 66, 0.9), rgba(19, 33, 52, 0.9));
+    color: var(--text-color);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    text-align: left;
+    width: 100%;
+}
+
+.notification-item.clickable {
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.notification-item.clickable:hover {
+    transform: translateY(-1px);
+    border-color: rgba(56, 189, 248, 0.7);
+}
+
+.notification-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(139, 92, 246, 0.2));
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    flex-shrink: 0;
+}
+
+.notification-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.notification-text-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.notification-text-wrap strong {
+    font-size: 0.95rem;
+}
+
+.notification-text-wrap span {
+    color: var(--text-muted);
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.notification-text-wrap small {
+    color: rgba(156, 198, 234, 0.9);
+}
+
+.notification-pill {
+    background: rgba(52, 211, 153, 0.14);
+    color: #a7f3d0;
+    border: 1px solid rgba(52, 211, 153, 0.5);
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
 .user-card {
     background: #0D172A;
     padding: 1rem;
@@ -1782,6 +2453,144 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     align-items: center;
     justify-content: center;
     font-weight: bold;
+}
+
+.chat-modal {
+    width: min(92vw, 620px);
+    min-height: min(75vh, 640px);
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    padding: 1.1rem;
+}
+
+.chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.chat-user-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.chat-user-meta .chat-avatar,
+.chat-user-meta .avatar-placeholder-small {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    object-fit: cover;
+}
+
+.chat-user-meta .avatar-placeholder-small {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0f172a, #1d4ed8);
+    color: #e2f4ff;
+    font-weight: 700;
+}
+
+.chat-user-meta h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    color: #f8fafc;
+}
+
+.chat-user-meta p {
+    margin: 0.15rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.chat-thread {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    padding: 0.8rem 0.2rem 0.9rem;
+    overflow-y: auto;
+    background: rgba(15, 23, 42, 0.28);
+    border-radius: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.chat-bubble-wrap {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.chat-bubble-wrap.mine {
+    justify-content: flex-end;
+}
+
+.chat-bubble {
+    max-width: min(78%, 320px);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.8rem 0.95rem;
+    border-radius: 18px 18px 18px 6px;
+    background: rgba(30, 41, 59, 0.95);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.2);
+    color: #e2e8f0;
+}
+
+.chat-bubble.mine {
+    border-radius: 18px 18px 6px 18px;
+    background: linear-gradient(135deg, #14b8a6, #0ea5e9);
+    border-color: rgba(94, 234, 212, 0.6);
+    color: white;
+}
+
+.chat-bubble span {
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+.chat-bubble small {
+    font-size: 0.68rem;
+    opacity: 0.8;
+    text-align: right;
+}
+
+.chat-bubble.mine small {
+    text-align: right;
+}
+
+.chat-composer {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-end;
+    padding-top: 1rem;
+}
+
+.chat-composer textarea {
+    flex: 1;
+    min-height: 58px;
+    max-height: 140px;
+    resize: vertical;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.7);
+    color: #f8fafc;
+    padding: 0.8rem 0.9rem;
+    font: inherit;
+}
+
+.chat-send-btn {
+    min-width: 110px;
+    height: 58px;
+    border-radius: 14px;
 }
 
 .user-details h4 {
@@ -2067,6 +2876,17 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     cursor: pointer;
 }
 
+@media (max-width: 900px) {
+    .app-screen {
+        width: min(100%, 960px);
+        min-height: 680px;
+    }
+
+    .top-nav {
+        padding: 0.9rem 1rem;
+    }
+}
+
 @media (max-width: 600px) {
     .app-brand {
         top: 1rem;
@@ -2085,6 +2905,7 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
         height: 100vh;
         border-radius: 0;
         border: none;
+        min-height: 100vh;
     }
 
     .profile-header {
@@ -2094,6 +2915,10 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
 
     .action-bar {
         flex-direction: column;
+    }
+
+    .notification-item {
+        padding: 0.85rem;
     }
 }
 </style>

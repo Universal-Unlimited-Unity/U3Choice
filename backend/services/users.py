@@ -17,8 +17,13 @@ async def get_user_profile_BY_ID(id):
         user = User_Profile(**user)
         return user
     
+async def get_users_by_ids(ids):
+    with eng.begin() as conn:
+        stmt = select(users_table).where(users_table.c.id.in_(ids))
+        users = conn.execute(stmt).mappings().all()
+        return [User_Profile(**user) for user in users]
+        
 async def get_user_profile_BY_USERNAME(username):
-    print(f"Getting user profile for username: {username}")
     with eng.begin() as conn:
         stmt = select(users_table).where(users_table.c.username == username)
         user = conn.execute(stmt).mappings().first()

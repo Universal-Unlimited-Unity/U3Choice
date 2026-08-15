@@ -8,12 +8,22 @@ from jose import jwt
 from datetime import datetime, timedelta, date
 from config import settings
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, WebSocket
 from pwdlib import PasswordHash
-
 pwd_hash = PasswordHash.recommended()
 
 security = HTTPBearer()
+
+def get_ws_token(websocket: WebSocket):
+    query_token = websocket.query_params.get("token")
+    if query_token:
+        return query_token
+
+    auth_header = websocket.headers.get("authorization") or websocket.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        return auth_header.split(" ", 1)[1]
+
+    raise HTTPException(status_code=401, detail="Token not provided")
 
 def verify_token(credential: HTTPAuthorizationCredentials = Depends(security)):
     token = credential.credentials

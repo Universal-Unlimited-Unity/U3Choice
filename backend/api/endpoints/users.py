@@ -159,5 +159,4 @@ async def get_user_settings_phone(pwd: Annotated[old_pwd, Body()], new_phone: An
         raise HTTPException(status_code=404, detail="User not found")
     await change_phone(user.get("id"), new_phone.new_phone)
     return {"message": "Phone number changed successfully"}
-    
 
