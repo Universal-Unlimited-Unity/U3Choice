@@ -29,6 +29,7 @@ class User_Profile(BaseModel):
     country: str = Field(max_length=2)
     verified: bool = False
     status: Status
+    email: EmailStr
     
 class Profile_View(BaseModel):
     viwed_id: str

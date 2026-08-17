@@ -41,7 +41,7 @@ def generate_token_by_email(email: str):
         user_row = conn.execute(select(users_table).where(users_table.c.email == email)).mappings().first()
         if user_row["status"] != "Active":
             return -1
-        payload = {"id": str(user_row["id"]), "status": user_row["status"], "username": user_row["username"]}
+        payload = {"id": str(user_row["id"]), "status": user_row["status"], "username": user_row["username"], "email_verified": user_row["email_verified"]}
         payload["exp"] = datetime.utcnow() + timedelta(hours=1)
         return jwt.encode(payload, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
     
@@ -50,7 +50,7 @@ def generate_token_by_username(username: str):
         user_row = conn.execute(select(users_table).where(users_table.c.username == username)).mappings().first()
         if user_row["status"] != "Active":
             return -1
-        payload = {"id": str(user_row["id"]), "status": user_row["status"], "username": user_row["username"]}
+        payload = {"id": str(user_row["id"]), "status": user_row["status"], "username": user_row["username"], "email_verified": user_row["email_verified"]}
         payload["exp"] = datetime.utcnow() + timedelta(hours=1)
         return jwt.encode(payload, settings.TOKEN_KEY, algorithm=settings.TOKEN_ALGO)
         

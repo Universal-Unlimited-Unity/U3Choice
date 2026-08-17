@@ -32,6 +32,15 @@ async def get_user_profile_BY_USERNAME(username):
         user = User_Profile(**user)
         return user
 
+async def get_user_profile_BY_EMAIL(email):
+    with eng.begin() as conn:
+        stmt = select(users_table).where(users_table.c.email == email)
+        user = conn.execute(stmt).mappings().first()
+        if not user:
+            return None
+        user = User_Profile(**user)
+        return user
+    
 async def get_profile_photo(username: str):
     user = await get_user_profile_BY_USERNAME(username)
     return user.photo_url

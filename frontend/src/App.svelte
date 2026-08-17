@@ -23,6 +23,7 @@
     } from "./lib/api/friendships";
     import { fetchParseHandlerForFiles } from "./lib/api/http";
     import { getMessagesBetweenUsers, sendMessage } from "./lib/api/messages";
+    import { sendVerificationEmail, verifyEmailCode, resetForgottenPassword } from "./lib/api/security";
     import CountryData from "country-list-with-dial-code-and-flag";
     import logo from "./assets/logo.png";
 
@@ -131,7 +132,20 @@
     let settingsPhoneDropdownOpen = false;
     let settingsPhoneSearch = "";
     let settingsError = "";
+    let settingsSuccess = "";
     let settingsLoading = false;
+    let settingsVerificationCode = "";
+    let settingsCodeSent = false;
+
+    let isForgotPasswordModalOpen = false;
+    let forgotPasswordEmail = "";
+    let forgotPasswordCode = "";
+    let forgotPasswordNewPassword = "";
+    let forgotPasswordConfirmPassword = "";
+    let forgotPasswordError = "";
+    let forgotPasswordSuccess = "";
+    let forgotPasswordCodeSent = false;
+    let forgotPasswordLoading = false;
 
     let editForm = {
         username: "",
@@ -223,7 +237,8 @@
 
         const rootUser = notification.root_user || notification.rootUser || null;
         const rootUsername = rootUser?.username || notification.root_username || notification.rootUsername || null;
-        const type = String(notification?.type || '').trim().toLowerCase();
+        const rawType = String(notification?.type || '').trim();
+        const type = rawType.toLowerCase();
 
         const fallbackMessage =
             type === 'sent'
@@ -250,20 +265,19 @@
         const normalized = normalizeNotification(notification);
         const type = getNotificationType(normalized);
         const rootUsername = normalized?.root_username;
-        const message = String(normalized?.message || '').trim();
 
-        if (type === 'sent' || /request/i.test(message)) {
+        if (type === 'sent') {
             if (rootUsername) return `@${rootUsername} sent you a friend request`;
             return 'Someone sent you a friend request';
         }
 
-        if (type === 'accept' || type === 'accepted' || /accepted/i.test(message)) {
+        if (type === 'accept' || type === 'accepted') {
             if (rootUsername) return `@${rootUsername} accepted your request`;
             return 'Someone accepted your request';
         }
 
-        if (rootUsername) return `@${rootUsername} ${message || 'updated their status'}`;
-        return message || 'New notification';
+        if (rootUsername) return `@${rootUsername} ${normalized?.message || 'updated their status'}`;
+        return normalized?.message || 'New notification';
     }
 
     function isNotificationClickable(notification) {
@@ -886,7 +900,10 @@
         settingsPhoneDropdownOpen = false;
         settingsPhoneSearch = "";
         settingsError = "";
+        settingsSuccess = "";
         settingsLoading = false;
+        settingsVerificationCode = "";
+        settingsCodeSent = false;
     }
 
     function openSettingsAction(action) {
@@ -899,7 +916,10 @@
         settingsPhoneDropdownOpen = false;
         settingsPhoneSearch = "";
         settingsError = "";
+        settingsSuccess = "";
         settingsLoading = false;
+        settingsVerificationCode = "";
+        settingsCodeSent = false;
         isSettingsMenuOpen = false;
         isSettingsModalOpen = true;
     }
@@ -911,8 +931,14 @@
     async function handleSettingsSave() {
         const currentPassword = settingsCurrentPassword.trim();
         const nextValue = settingsNewValue.trim();
+        const verificationCode = settingsVerificationCode.trim();
 
-        if (!currentPassword) {
+        if (settingsAction === "verify-email") {
+            if (!verificationCode) {
+                settingsError = "Please enter the verification code sent to your email.";
+                return;
+            }
+        } else if (!currentPassword) {
             settingsError = "Current password is required.";
             return;
         }
@@ -936,6 +962,7 @@
 
         settingsLoading = true;
         settingsError = "";
+        settingsSuccess = "";
 
         try {
             if (settingsAction === "password") {
@@ -951,11 +978,35 @@
                 }
 
                 await changePhone(token, currentPassword, `${settingsPhonePrefix} ${phoneNumber}`);
+            } else if (settingsAction === "verify-email") {
+                await verifyEmailCode(token, verificationCode);
             }
 
             closeSettingsModal();
+            await fetchUserProfile(getMyUsername());
         } catch (err) {
             settingsError = formatApiError(err, "Failed to update settings.");
+        } finally {
+            settingsLoading = false;
+        }
+    }
+
+    async function handleSendEmailVerificationCode() {
+        if (!token) {
+            settingsError = "Please sign in and try again.";
+            return;
+        }
+
+        settingsLoading = true;
+        settingsError = "";
+        settingsSuccess = "";
+
+        try {
+            await sendVerificationEmail(token);
+            settingsCodeSent = true;
+            settingsSuccess = "A verification code was sent to your email.";
+        } catch (err) {
+            settingsError = formatApiError(err, "Could not send verification code.");
         } finally {
             settingsLoading = false;
         }
@@ -1118,6 +1169,82 @@
         loading = false;
     }
 
+    function resetForgotPasswordState() {
+        forgotPasswordEmail = signinForm.email || "";
+        forgotPasswordCode = "";
+        forgotPasswordNewPassword = "";
+        forgotPasswordConfirmPassword = "";
+        forgotPasswordError = "";
+        forgotPasswordSuccess = "";
+        forgotPasswordCodeSent = false;
+        forgotPasswordLoading = false;
+    }
+
+    function openForgotPasswordModal() {
+        resetForgotPasswordState();
+        isForgotPasswordModalOpen = true;
+    }
+
+    function closeForgotPasswordModal() {
+        isForgotPasswordModalOpen = false;
+        resetForgotPasswordState();
+    }
+
+    async function handleForgotPasswordSendCode() {
+        const email = forgotPasswordEmail.trim();
+
+        if (!email) {
+            forgotPasswordError = "Please enter your account email first.";
+            return;
+        }
+
+        forgotPasswordLoading = true;
+        forgotPasswordError = "";
+        forgotPasswordSuccess = "";
+
+        try {
+            await sendVerificationEmail(null, email);
+            forgotPasswordCodeSent = true;
+            forgotPasswordSuccess = "Verification code sent. Check your inbox.";
+        } catch (err) {
+            forgotPasswordError = formatApiError(err, "Could not send verification code.");
+        } finally {
+            forgotPasswordLoading = false;
+        }
+    }
+
+    async function handleForgotPasswordReset() {
+        const email = forgotPasswordEmail.trim();
+        const code = forgotPasswordCode.trim();
+        const newPassword = forgotPasswordNewPassword.trim();
+        const confirmPassword = forgotPasswordConfirmPassword.trim();
+
+        if (!email || !code || !newPassword || !confirmPassword) {
+            forgotPasswordError = "Please fill all forgot password fields.";
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            forgotPasswordError = "New passwords do not match.";
+            return;
+        }
+
+        forgotPasswordLoading = true;
+        forgotPasswordError = "";
+        forgotPasswordSuccess = "";
+
+        try {
+            await resetForgottenPassword(email, code, newPassword);
+            forgotPasswordSuccess = "Password updated. You can sign in now.";
+            signinForm.email = email;
+            signinForm.pwd = "";
+        } catch (err) {
+            forgotPasswordError = formatApiError(err, "Failed to reset password.");
+        } finally {
+            forgotPasswordLoading = false;
+        }
+    }
+
     function handleNotificationClick(notification) {
         if (!notification) return;
         const normalized = normalizeNotification(notification);
@@ -1156,6 +1283,7 @@
         profilePhotoUrl = null;
         activeProfileUsername = null;
         resetSettingsState();
+        closeForgotPasswordModal();
     }
 
     // Listen for global unauthorized events from fetch helpers
@@ -1416,6 +1544,9 @@
                                             <button type="button" on:click={() => openSettingsAction("password")}>Change Password</button>
                                             <button type="button" on:click={() => openSettingsAction("email")}>Change Email</button>
                                             <button type="button" on:click={() => openSettingsAction("phone")}>Change Phone</button>
+                                            {#if !profileData.verified}
+                                                <button type="button" on:click={() => openSettingsAction("verify-email")}>Verify Email</button>
+                                            {/if}
                                         </div>
                                     {/if}
                                 </div>
@@ -1595,19 +1726,36 @@
                         Change Password
                     {:else if settingsAction === "email"}
                         Change Email
-                    {:else}
+                    {:else if settingsAction === "phone"}
                         Change Phone
+                    {:else}
+                        Verify Email
                     {/if}
                 </h3>
 
-                <p class="modal-copy">Enter your current password and the new value in the same form.</p>
+                {#if settingsAction === "verify-email"}
+                    <p class="modal-copy">Send a code to your email, then enter that code below to verify your account.</p>
 
-                <input
-                    type="password"
-                    placeholder="Current password"
-                    bind:value={settingsCurrentPassword}
-                    disabled={settingsLoading}
-                />
+                    <button class="btn-secondary" type="button" on:click={handleSendEmailVerificationCode} disabled={settingsLoading}>
+                        {settingsLoading ? "Sending..." : "Send Verification Code"}
+                    </button>
+
+                    <input
+                        type="text"
+                        placeholder="Verification code"
+                        bind:value={settingsVerificationCode}
+                        disabled={settingsLoading}
+                    />
+                {:else}
+                    <p class="modal-copy">Enter your current password and the new value in the same form.</p>
+
+                    <input
+                        type="password"
+                        placeholder="Current password"
+                        bind:value={settingsCurrentPassword}
+                        disabled={settingsLoading}
+                    />
+                {/if}
 
                 {#if settingsAction === "password"}
                     <input
@@ -1667,6 +1815,10 @@
                     </div>
                 {/if}
 
+                {#if settingsSuccess}
+                    <div class="modal-success">{settingsSuccess}</div>
+                {/if}
+
                 {#if settingsError}
                     <div class="modal-error">{settingsError}</div>
                 {/if}
@@ -1674,7 +1826,13 @@
                 <div class="modal-actions">
                     <button class="btn-secondary" type="button" on:click={closeSettingsModal} disabled={settingsLoading}>Cancel</button>
                     <button class="btn-primary" type="button" on:click={handleSettingsSave} disabled={settingsLoading}>
-                        {settingsLoading ? "Saving..." : "Save Changes"}
+                        {#if settingsLoading}
+                            Saving...
+                        {:else if settingsAction === "verify-email"}
+                            Verify Email
+                        {:else}
+                            Save Changes
+                        {/if}
                     </button>
                 </div>
             </div>
@@ -1850,6 +2008,10 @@
             placeholder="Password *"
         >
 
+        <div class="form-link-row">
+            <button type="button" class="link-text-btn" on:click={openForgotPasswordModal}>Forgot password?</button>
+        </div>
+
         <button class="submit" on:click={handleSignin} disabled={loading}>
             {loading ? "Signing In..." : "Sign In"}
         </button>
@@ -1861,6 +2023,66 @@
     {/if}
 
 </div>
+
+{#if isForgotPasswordModalOpen}
+    <div class="modal-overlay">
+        <div class="modal-card settings-modal">
+            <h3>Forgot Password</h3>
+            <p class="modal-copy">Enter your account email, request a code, then set a new password.</p>
+
+            <input
+                type="email"
+                placeholder="Account email"
+                bind:value={forgotPasswordEmail}
+                disabled={forgotPasswordLoading}
+            />
+
+            <button class="btn-secondary" type="button" on:click={handleForgotPasswordSendCode} disabled={forgotPasswordLoading}>
+                {forgotPasswordLoading ? "Sending..." : "Send Code"}
+            </button>
+
+            <input
+                type="text"
+                placeholder="Verification code"
+                bind:value={forgotPasswordCode}
+                disabled={forgotPasswordLoading}
+            />
+
+            <input
+                type="password"
+                placeholder="New password"
+                bind:value={forgotPasswordNewPassword}
+                disabled={forgotPasswordLoading}
+            />
+
+            <input
+                type="password"
+                placeholder="Confirm new password"
+                bind:value={forgotPasswordConfirmPassword}
+                disabled={forgotPasswordLoading}
+            />
+
+            {#if forgotPasswordCodeSent}
+                <div class="modal-hint">Code sent. Enter it above and submit your new password.</div>
+            {/if}
+
+            {#if forgotPasswordSuccess}
+                <div class="modal-success">{forgotPasswordSuccess}</div>
+            {/if}
+
+            {#if forgotPasswordError}
+                <div class="modal-error">{forgotPasswordError}</div>
+            {/if}
+
+            <div class="modal-actions">
+                <button class="btn-secondary" type="button" on:click={closeForgotPasswordModal} disabled={forgotPasswordLoading}>Close</button>
+                <button class="btn-primary" type="button" on:click={handleForgotPasswordReset} disabled={forgotPasswordLoading}>
+                    {forgotPasswordLoading ? "Updating..." : "Update Password"}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
 
 {/if}
 
@@ -1897,16 +2119,16 @@
 }
 
 .app-brand {
-    position: fixed;
-    top: 1.5rem;
-    left: 1.5rem;
+    position: relative;
     display: flex;
     align-items: center;
-    z-index: 2000;
+    justify-content: center;
+    margin: 1rem auto 0;
+    z-index: 1;
 }
 
 .brand-logo {
-    height: 48px;
+    height: 52px;
     width: auto;
     object-fit: contain;
     filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4));
@@ -2129,6 +2351,26 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
 .submit:disabled{
     opacity: .5;
     cursor: not-allowed;
+}
+
+.form-link-row {
+    display: flex;
+    justify-content: flex-end;
+    margin: -0.45rem 0 0.4rem;
+}
+
+.link-text-btn {
+    background: transparent;
+    border: none;
+    color: var(--primary-teal);
+    cursor: pointer;
+    font-size: 0.86rem;
+    text-decoration: underline;
+    padding: 0;
+}
+
+.link-text-btn:hover {
+    color: #7dd3fc;
 }
 
 .success-box {
@@ -2861,6 +3103,28 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     border-radius: 8px;
     word-break: break-word;
     font-size: 0.9rem;
+}
+
+.modal-success {
+    margin-top: 0.75rem;
+    background: rgba(52, 211, 153, 0.12);
+    border: 1px solid rgba(52, 211, 153, 0.6);
+    color: #a7f3d0;
+    padding: 0.7rem 0.8rem;
+    border-radius: 8px;
+    word-break: break-word;
+    font-size: 0.9rem;
+}
+
+.modal-hint {
+    margin-top: 0.75rem;
+    background: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.5);
+    color: #bae6fd;
+    padding: 0.65rem 0.8rem;
+    border-radius: 8px;
+    font-size: 0.86rem;
+    line-height: 1.4;
 }
 
 .modal-actions {

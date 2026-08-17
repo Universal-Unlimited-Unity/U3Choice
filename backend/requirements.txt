@@ -13,3 +13,4 @@ pytest
 psycopg[binary]
 psycopg
 pwdlib[argon2]
+aiosmtplib

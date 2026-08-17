@@ -8,7 +8,7 @@ from database import init_db
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from .endpoints.notifications_ws import router as notifications_router
-
+from .endpoints.security import router as security_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting up...")
@@ -34,3 +34,4 @@ app.include_router(auth_router)
 app.include_router(search_router)
 app.include_router(notifications_router)
 app.include_router(messages_router)
+app.include_router(security_router)

@@ -31,7 +31,7 @@ async def send_request(friendship: Annotated[Friendships, Body()], user: Annotat
     notification = Notification(
         root_id=friendship.sender_id,
         concerned_id=friendship.receiver_id,
-        type=Type.Sent
+        type=Type.Accept
     )
     await save_notification(notification)
     if notification.concerned_id in user_queues:
@@ -53,7 +53,7 @@ async def accept_request(friendship: Annotated[Friendships_short, Body()], user:
         notification = Notification(
             root_id=friendship.receiver_id,
             concerned_id=friendship.sender_id,
-            type=Type.Accept
+            type=Type.Sent
         )
         await save_notification(notification)
         if notification.concerned_id in user_queues:
