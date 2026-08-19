@@ -14,7 +14,7 @@ U3Choice is a full-stack social platform with user profiles, friendships, real-t
 
 ```
 U3Choice/
-├── backend/                 # Fully authored by the user
+├── backend/                 # Fully authored by me
 │   ├── api/               # Routers: auth, users, friendships, messages, notifications, search, security
 │   ├── models/             # SQLAlchemy models
 │   ├── schemas/             # Pydantic schemas
@@ -23,7 +23,7 @@ U3Choice/
 │   ├── config.py
 │   ├── requirements.txt
 │   └── dockerfile
-├── frontend/                # Generated & guided by the user
+├── frontend/                # Generated & guided by the me
 │   ├── src/
 │   │   ├── lib/              # Reusable API client modules
 │   │   └── routes/          # Svelte pages (profile, home, etc.)
