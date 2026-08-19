@@ -23,7 +23,7 @@
     } from "./lib/api/friendships";
     import { fetchParseHandlerForFiles } from "./lib/api/http";
     import { getMessagesBetweenUsers, sendMessage } from "./lib/api/messages";
-    import { sendVerificationEmail, verifyEmailCode, resetForgottenPassword } from "./lib/api/security";
+    import { sendVerificationEmail, sendForgotPasswordVerificationEmail, verifyEmailCode, resetForgottenPassword } from "./lib/api/security";
     import CountryData from "country-list-with-dial-code-and-flag";
     import logo from "./assets/logo.png";
 
@@ -742,6 +742,16 @@
 
             await sendMessage(token, optimisticMessage);
 
+            // Also send through the websocket so the receiver gets it in real-time
+            if (messageSocket && messageSocket.readyState === WebSocket.OPEN) {
+                messageSocket.send(JSON.stringify({
+                    sender_id: String(myUserId),
+                    receiver_id: String(activeChatUser.id),
+                    content: messageContent,
+                    created_at: new Date().toISOString()
+                }));
+            }
+
             const refreshed = await getMessagesBetweenUsers(token, myUserId, activeChatUser.id);
             chatMessages = Array.isArray(refreshed) ? refreshed : chatMessages;
         } catch (err) {
@@ -1203,7 +1213,7 @@
         forgotPasswordSuccess = "";
 
         try {
-            await sendVerificationEmail(null, email);
+            await sendForgotPasswordVerificationEmail(email);
             forgotPasswordCodeSent = true;
             forgotPasswordSuccess = "Verification code sent. Check your inbox.";
         } catch (err) {
@@ -1544,7 +1554,7 @@
                                             <button type="button" on:click={() => openSettingsAction("password")}>Change Password</button>
                                             <button type="button" on:click={() => openSettingsAction("email")}>Change Email</button>
                                             <button type="button" on:click={() => openSettingsAction("phone")}>Change Phone</button>
-                                            {#if !profileData.verified}
+                                            {#if !profileData.email_verified}
                                                 <button type="button" on:click={() => openSettingsAction("verify-email")}>Verify Email</button>
                                             {/if}
                                         </div>
@@ -1736,7 +1746,7 @@
                 {#if settingsAction === "verify-email"}
                     <p class="modal-copy">Send a code to your email, then enter that code below to verify your account.</p>
 
-                    <button class="btn-secondary" type="button" on:click={handleSendEmailVerificationCode} disabled={settingsLoading}>
+                    <button class="btn-send-code" type="button" on:click={handleSendEmailVerificationCode} disabled={settingsLoading}>
                         {settingsLoading ? "Sending..." : "Send Verification Code"}
                     </button>
 
@@ -1777,7 +1787,7 @@
                         bind:value={settingsNewValue}
                         disabled={settingsLoading}
                     />
-                {:else}
+                {:else if settingsAction === "phone"}
                     <div class="phone-group settings-phone-group">
                         <div class="custom-select prefix-select settings-prefix-select">
                             <button type="button" class="select-btn" on:click={() => settingsPhoneDropdownOpen = !settingsPhoneDropdownOpen} disabled={settingsLoading}>
@@ -2037,7 +2047,7 @@
                 disabled={forgotPasswordLoading}
             />
 
-            <button class="btn-secondary" type="button" on:click={handleForgotPasswordSendCode} disabled={forgotPasswordLoading}>
+            <button class="btn-send-code" type="button" on:click={handleForgotPasswordSendCode} disabled={forgotPasswordLoading}>
                 {forgotPasswordLoading ? "Sending..." : "Send Code"}
             </button>
 
@@ -2981,6 +2991,55 @@ input.invalid, .select-btn.invalid, .select-input.invalid {
     background: transparent;
     color: var(--text-color);
     border: 1px solid var(--border-color);
+}
+
+.btn-send-code {
+    width: 100%;
+    padding: 0.85rem 1.2rem;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #0ea5e9 0%, #8b5cf6 50%, #ec4899 100%);
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    margin-bottom: 1rem;
+    box-shadow: 0 4px 16px rgba(14, 165, 233, 0.35), 0 0 0 1px rgba(56, 189, 248, 0.2);
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-send-code::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.btn-send-code:hover:not(:disabled) {
+    background: linear-gradient(135deg, #0284c7 0%, #7c3aed 50%, #db2777 100%);
+    box-shadow: 0 6px 20px rgba(14, 165, 233, 0.5), 0 0 0 1px rgba(56, 189, 248, 0.4);
+    transform: translateY(-1px);
+}
+
+.btn-send-code:hover:not(:disabled)::before {
+    left: 100%;
+}
+
+.btn-send-code:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
+}
+
+.btn-send-code:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .btn-secondary.danger {

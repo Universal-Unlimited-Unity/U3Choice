@@ -75,7 +75,7 @@ async def change_pwd(user_id: str, old_pwd: str, new_pwd: str):
 
 async def change_email(user_id: str, new_email: str):
     with eng.begin() as conn:
-        stmt = update(users_table).where(users_table.c.id == user_id).values({"email": new_email})
+        stmt = update(users_table).where(users_table.c.id == user_id).values({"email": new_email, "email_verified": False})
         conn.execute(stmt)
     return True
 

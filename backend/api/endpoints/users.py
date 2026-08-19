@@ -1,7 +1,7 @@
 import uuid
 from fastapi import APIRouter, HTTPException, Depends, Path, Body, Query, File, UploadFile
 from services.users import get_user_profile_BY_USERNAME, get_profile_photo, change_pwd, change_email, change_phone
-from schemas.users_schema import Profile_View, User_Update, old_pwd, new_pwd, new_email, UserSummary, new_phone
+from schemas.users_schema import Profile_View, User_Update, old_pwd, new_pwd, new_email, UserSummary, new_phone, Profile_View_Without_email_verified
 from redis_client import redis
 import json
 from typing import Annotated, Any
@@ -15,7 +15,7 @@ from services.security import verify_pwd
 from services.authentification import pwd_strong
 router = APIRouter(prefix="", tags=["users"])
 
-@router.get("/{username}", response_model=Profile_View)
+@router.get("/{username}")
 async def read_user_profile(username: Annotated[str, Path()], user: Annotated[dict, Depends(verify_token)]):
     viwer_id = user.get("id")
     if user.get("status") != "Active":
@@ -43,7 +43,11 @@ async def read_user_profile(username: Annotated[str, Path()], user: Annotated[di
                                 has_sent_friendship_request=await check_friendship_request_exists(requested_profile.id, uuid.UUID(viwer_id)),
                                 has_received_friendship_request=await check_friendship_request_exists(uuid.UUID(viwer_id), requested_profile.id),
                                 they_blocked_me=await did_they_blocked_me(uuid.UUID(viwer_id), requested_profile.id),
-                                i_blocked_them=await did_they_blocked_me(requested_profile.id, uuid.UUID(viwer_id)))
+                                i_blocked_them=await did_they_blocked_me(requested_profile.id, uuid.UUID(viwer_id)),
+                                email_verified=requested_profile.email_verified)
+    
+    if not profile_view.is_owner:
+        profile_view = Profile_View_Without_email_verified(**profile_view.dict())
 
     if profile_view.status != "Active":
         raise HTTPException(status_code=403, detail="User is suspended")

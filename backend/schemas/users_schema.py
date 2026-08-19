@@ -30,6 +30,7 @@ class User_Profile(BaseModel):
     verified: bool = False
     status: Status
     email: EmailStr
+    email_verified: bool
     
 class Profile_View(BaseModel):
     viwed_id: str
@@ -48,7 +49,26 @@ class Profile_View(BaseModel):
     has_received_friendship_request: bool = False
     they_blocked_me: bool
     i_blocked_them: bool
-    
+    email_verified: bool
+
+class Profile_View_Without_email_verified(BaseModel):
+    viwed_id: str
+    username: str
+    viwer_id: str
+    name: str
+    bio: str | None = Field(max_length=50)
+    photo_url: str = "assets/default_profile.png"
+    country: str = Field(max_length=2)
+    verified: bool = False
+    status: Status
+    is_owner: bool = False
+    is_friends: bool = False
+    is_blocked: bool = False
+    has_sent_friendship_request: bool = False
+    has_received_friendship_request: bool = False
+    they_blocked_me: bool
+    i_blocked_them: bool
+
 class User(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     pwd_hash: str

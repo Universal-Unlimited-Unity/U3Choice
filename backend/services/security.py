@@ -56,8 +56,7 @@ async def email_verification(username:str):
     await refresh_user_cashe(username)
 
 async def update_pwd(email: str, new_pwd: str):
-    hashed_pwd = pwd_hash.hash(new_pwd)
     with eng.begin() as conn:
-        conn.execute(update(users_table).where(users_table.c.email == email).values(pwd_hash=hashed_pwd))
+        conn.execute(update(users_table).where(users_table.c.email == email).values(pwd_hash=new_pwd))
     
     

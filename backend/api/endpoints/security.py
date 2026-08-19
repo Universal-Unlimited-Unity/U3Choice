@@ -5,9 +5,9 @@ from services.users import get_user_profile_BY_EMAIL, get_user_profile_BY_ID
 import random
 import asyncio
 from services.security import email_verification, update_pwd
-from pwdlib import PasswordHash
+from services.authentification import pwd_hash
 from typing import Annotated
-pwd_hash = PasswordHash.recommended()
+
 router = APIRouter(prefix="/security", tags=["security"])
 
 store_codes = {}

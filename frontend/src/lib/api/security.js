@@ -22,6 +22,14 @@ export async function sendVerificationEmail(token, email = "") {
     });
 }
 
+export async function sendForgotPasswordVerificationEmail(email) {
+    const params = new URLSearchParams({ email: email.trim() });
+
+    return await fetchParseHandler(`${API_URL}/security/send_verification_email_forgot_password?${params.toString()}`, {
+        method: "POST"
+    });
+}
+
 export async function verifyEmailCode(token, code) {
     const params = new URLSearchParams({ code: String(code).trim() });
 
