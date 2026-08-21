@@ -2,7 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from api.main import app
 from sqlalchemy import text
-
+from services.authentification import verify_age
+from datetime import datetime
 Client = TestClient(app)
 
 @pytest.mark.integration
@@ -62,3 +63,12 @@ def test_signin_with_incorrect_credentials(user_for_sign_up, db):
     }
     response2 = Client.post("auth/signin", json=credentials)
     assert response2.status_code == 400 and response2.json()["detail"] == "INVALID_CREDENTIALS"
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dob, expected", [
+    (datetime.strptime("2000-01-01", "%Y-%m-%d").date(), True),
+    (datetime.strptime("2010-01-01", "%Y-%m-%d").date(), False),
+    (datetime.strptime("2020-01-01", "%Y-%m-%d").date(), False),
+])
+def test_verify_age(dob, expected):
+    assert verify_age(dob) == expected
