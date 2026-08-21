@@ -7,11 +7,11 @@ auth_router = APIRouter(prefix="/auth", tags=["authentification"])
 
 @auth_router.post("/signup")
 async def signup_endpoint(user: Annotated[User, Body()]):
-    if username_used(user.username):
+    if username_used(user.username.lower()):
         raise HTTPException(status_code=400, detail="USERNAME_TAKEN")
-    if email_used(user.email):
+    if email_used(user.email.lower()):
         raise HTTPException(status_code=400, detail="EMAIL_TAKEN")
-    if not pwd_strong(user.pwd_hash):
+    if not pwd_strong(user.pwd_hash.lower()):
         raise HTTPException(status_code=400, detail="PASSWORD_NOT_STRONG")
     if not verify_age(user.dob):
         raise HTTPException(status_code=400, detail="USER_UNDERAGE")

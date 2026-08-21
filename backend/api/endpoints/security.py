@@ -61,6 +61,6 @@ async def forgot_password_endpoint(email: str, code: int, new_password: str):
         raise HTTPException(status_code=400, detail="Invalid verification code")
     del store_codes[email]
     new_password_hashed = pwd_hash.hash(new_password)
-    await update_pwd(email, new_password_hashed)
+    await update_pwd(email, new_password_hashed.lower())
     return {"message": "Password updated successfully"}
 
