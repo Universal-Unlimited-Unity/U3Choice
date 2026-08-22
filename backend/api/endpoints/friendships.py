@@ -10,6 +10,8 @@ from services.security import update_cach_key
 from services.notifications import save_notification
 from schemas.notifications import Notification, Type
 from .notifications_ws import user_queues
+import logging
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/friendships", tags=["friendships"])
 
 

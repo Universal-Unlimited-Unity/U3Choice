@@ -9,10 +9,22 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from .endpoints.notifications_ws import router as notifications_router
 from .endpoints.security import router as security_router
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting up...")
-    await init_db()
+    try:
+        await init_db()
+    except Exception:
+        logger.critical("Database did not start seccussfully")
     yield
     print("Shutting down...")
 
