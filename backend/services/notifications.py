@@ -1,6 +1,6 @@
 from sqlalchemy import insert, select
 from database import eng
-from models.notifications import notification_table
+from models.notifications_model import notification_table
 from schemas.notifications import Notification
 from redis_client import redis
 import json

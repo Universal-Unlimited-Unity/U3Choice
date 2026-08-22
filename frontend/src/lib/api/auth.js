@@ -1,5 +1,5 @@
 import {fetchParseHandler} from "./http.js";
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export async function signup(user) {
     return await fetchParseHandler(`${API_URL}/auth/signup`, {
@@ -24,4 +24,3 @@ export async function signin(user) {
 
 
 }
-

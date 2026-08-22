@@ -1,6 +1,6 @@
 import { fetchParseHandler } from "./http.js";
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export async function getMessagesBetweenUsers(token, user1Id, user2Id) {
     if (!token || !user1Id || !user2Id) {

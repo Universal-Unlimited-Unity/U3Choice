@@ -1,4 +1,4 @@
-from models.messages import messages_table
+from models.messages_model import messages_table
 from schemas.messages import Message
 from .friendships import get_friends
 from database import eng
