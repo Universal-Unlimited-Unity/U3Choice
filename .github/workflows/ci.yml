@@ -26,5 +26,5 @@ jobs:
 
       - name: run tests
         working-directory: ./backend
-        run: pytest ./tests
+        run: pytest
       
