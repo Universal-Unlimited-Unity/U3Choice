@@ -25,5 +25,5 @@ jobs:
         run: docker compose up -d --wait database redis
 
       - name: run tests
-        run: backend/pytest
+        run: pytest backend/tests
       
