@@ -23,8 +23,7 @@ jobs:
         run: cat .github/workflows/.env.test >> "$GITHUB_ENV"
 
       - name: start conatiners
-        working-directory: ./backend
-        run: docker compose up -d --wait database redis backend
+        run: docker compose up -d --wait database redis
 
       - name: run tests
         working-directory: ./backend

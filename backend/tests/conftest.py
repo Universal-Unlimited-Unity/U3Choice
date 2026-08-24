@@ -1,7 +1,13 @@
 import pytest
-from database import eng, metadata
+from database import eng, metadata, init_db
 from sqlalchemy import text
-    
+
+@pytest.fixture(scope="session", autouse=True)
+def init():
+    await init_db()
+    yield
+    metadata.drop_all(eng)
+        
 @pytest.fixture(autouse=True)
 def setup_and_teardown():
     with eng.begin() as conn:
