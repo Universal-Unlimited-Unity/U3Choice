@@ -3,8 +3,10 @@ from database import eng, metadata, init_db
 from sqlalchemy import text
 
 @pytest.fixture(scope="session", autouse=True)
-async def init():
-    await init_db()
+def init():
+    with eng.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
+    metadata.create_all(eng)
     yield
     metadata.drop_all(eng)
         
