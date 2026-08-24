@@ -1,0 +1,30 @@
+name: U3Choice CI 
+on: 
+  push:
+    branches:
+      - main
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v4
+      
+      - name: setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: install dependencies
+        working-directory: ./backend
+        run: pip install -r requirements.txt
+      
+      - name: load env
+        run: cat .github/workflows/.env.test >> "$GITHUB_ENV"
+      - name: start conatiners
+        run: docker compose up -d --wait database redis
+
+      - name: run tests
+        working-directory: ./backend
+        run: pytest
+      

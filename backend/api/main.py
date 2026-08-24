@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from .endpoints.authentification import auth_router
 from .endpoints.users import router as users_router
 from .endpoints.friendships import router as friendships_router
@@ -9,6 +9,9 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from .endpoints.notifications_ws import router as notifications_router
 from .endpoints.security import router as security_router
+from database import eng
+from redis_client import redis
+from sqlalchemy import text
 import logging
 
 logging.basicConfig(
@@ -24,7 +27,7 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
     except Exception:
-        logger.critical("Database did not start seccussfully")
+        logger.exception("Database did not start successfully")
     yield
     print("Shutting down...")
 
@@ -39,6 +42,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/health/liveness")
+async def liveness():
+    return {"status": "alive"}
+
+@app.get("/health/readiness")
+async def readiness():
+    try:
+        with eng.begin() as conn:
+            conn.execute(text("SELECT 1"))
+        redis.ping()
+        return {"status": "ready"}
+    except Exception:
+        logger.exception("Application is not ready")
+        raise HTTPException(status_code=503, detail="Service Unavailable")
 
 app.include_router(users_router)
 app.include_router(friendships_router)
