@@ -3,7 +3,7 @@ from database import eng, metadata, init_db
 from sqlalchemy import text
 
 @pytest.fixture(scope="session", autouse=True)
-def init():
+async def init():
     await init_db()
     yield
     metadata.drop_all(eng)
