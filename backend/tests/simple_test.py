@@ -1,6 +1,6 @@
 import pytest
 from sqlalchemy import select
-from backend.redis_client import redis
+from redis_client import redis
 
 @pytest.mark.integration
 def test_database_core_connection(db):

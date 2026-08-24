@@ -1,8 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
-from backend.api.main import app
+from api.main import app
 from sqlalchemy import text
-from backend.services.authentification import verify_age
+from services.authentification import verify_age
 from datetime import datetime
 Client = TestClient(app)
 
