@@ -21,10 +21,13 @@ jobs:
       
       - name: load env
         run: cat .github/workflows/.env.test >> "$GITHUB_ENV"
+
       - name: start conatiners
         run: docker compose up -d --wait database redis
 
       - name: run tests
         working-directory: ./backend
+        env:
+          PYTHONPATH: .
         run: pytest
       
