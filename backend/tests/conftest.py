@@ -1,5 +1,5 @@
 import pytest
-from backend.database import eng
+from database import eng
 from sqlalchemy import text
 
 @pytest.fixture(autouse=True)
