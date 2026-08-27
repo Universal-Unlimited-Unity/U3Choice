@@ -36,8 +36,9 @@ app = FastAPI(title="U3Choice API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://choice.u3x.tech:5173"
+        "http://52.140.113.205:5173/",
+        "http://choice.u3x.tech:5173",
+        "http://localhost:5173"    
     ],
     allow_credentials=True,
     allow_methods=["*"],
