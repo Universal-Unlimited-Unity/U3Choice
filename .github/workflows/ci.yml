@@ -30,4 +30,24 @@ jobs:
         env:
           PYTHONPATH: .
         run: pytest -v
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ssh
+        run: ssh -i ${{ secrets.AZURE_SSH_PRIVATE_KEY }} u3choice@${{ AZURE_VM_IP }}
       
+      - name: git pull
+        run: git pull origin main
+
+      - name: move to U3Choice
+        run: cd U3Choice
+
+      - name: take docker down
+        run: docker compose down
+
+      - name: start docker
+        run: docker compose up --build  
+
+
