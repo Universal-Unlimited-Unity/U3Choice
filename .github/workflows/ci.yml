@@ -1,53 +1,63 @@
-name: U3Choice CI 
-on: 
+name: U3Choice CI
+
+on:
   push:
     branches:
       - main
+
 jobs:
+
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - name: checkout repo
+      - name: Checkout repo
         uses: actions/checkout@v4
-      
-      - name: setup python
+
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: install dependencies
+      - name: Install dependencies
         working-directory: ./backend
         run: pip install -r requirements.txt
-      
-      - name: load env
+
+      - name: Load env
         run: cat .github/workflows/.env.test >> "$GITHUB_ENV"
 
-      - name: start conatiners
+      - name: Start containers
         run: docker compose up -d --wait database redis
 
-      - name: run tests
+      - name: Run tests
         working-directory: ./backend
         env:
           PYTHONPATH: .
         run: pytest -v
+
   deploy:
     needs: test
     runs-on: ubuntu-latest
 
     steps:
-      - name: ssh
-        run: ssh -i ${{ secrets.AZURE_SSH_PRIVATE_KEY }} u3choice@${{ AZURE_VM_IP }}
-      
-      - name: git pull
-        run: git pull origin main
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AZURE_SSH_PRIVATE_KEY }}" > ~/.ssh/azure_vm
+          chmod 600 ~/.ssh/azure_vm
 
-      - name: move to U3Choice
-        run: cd U3Choice
+      - name: Deploy to Azure VM
+        run: |
+          ssh -i ~/.ssh/azure_vm \
+            -o StrictHostKeyChecking=no \
+            u3choice@${{ secrets.AZURE_VM_IP }} << 'EOF'
 
-      - name: take docker down
-        run: docker compose down
+            cd ~/U3Choice
 
-      - name: start docker
-        run: docker compose up --build  
+            git pull origin main
 
+            docker compose down
 
+            docker compose up -d --build
+
+          EOF
