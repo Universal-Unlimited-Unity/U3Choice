@@ -1,6 +1,7 @@
 from sqlalchemy import ForeignKey, UUID,DateTime, Table, Column, Index, String
 from database import metadata
 from .user_model import users_table
+
 messages_table = Table(
     "messages",
     metadata,
