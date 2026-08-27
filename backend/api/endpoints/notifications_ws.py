@@ -7,6 +7,7 @@ from services.notifications import get_notifications_for_user
 from services.users import get_users_by_ids, get_user_profile_BY_ID
 from services.authentification import get_ws_token
 import logging
+
 logger = logging.getLogger(__name__)
 user_queues: Dict[UUID, Queue] = {}
 
