@@ -725,12 +725,12 @@
         const messageContent = chatDraft.trim();
 
         try {
-            const nextMessageId = typeof crypto !== "undefined" && crypto.randomUUID
-                ? crypto.randomUUID()
-                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            //const nextMessageId = typeof crypto !== "undefined" && crypto.randomUUID
+            //    ? crypto.randomUUID()
+            //    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
             const optimisticMessage = {
-                id: nextMessageId,
+                //id: nextMessageId,
                 sender_id: String(myUserId),
                 receiver_id: String(activeChatUser.id),
                 content: messageContent,
