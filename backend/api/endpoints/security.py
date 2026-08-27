@@ -54,7 +54,7 @@ async def send_verification_email_endpoint(background_tasks: BackgroundTasks, em
         logger.warning("User not found for email %s", email)
         return {"message": "If the email exists, a verification code has been sent."}
     if user.status != "Active":
-        logger.warning("User with ID %s is not active", user.get("id"))
+        logger.warning("User with ID %s is not active", user.id))
         raise HTTPException(status_code=403, detail="User is suspended")
     email = user.email
     code = random.randint(1000, 9999)
@@ -62,7 +62,7 @@ async def send_verification_email_endpoint(background_tasks: BackgroundTasks, em
         del store_codes[email]
     store_codes[email] = code
     background_tasks.add_task(send_email_verification, user.email, code)
-    logger.info("Verification email sent for forgot password request for user with ID %s", user.get("id"))
+    logger.info("Verification email sent for forgot password request for user with ID %s", user.id)
     return {"message": "If the email exists, a verification code has been sent."}
 
 @router.get("/forgot_password")
