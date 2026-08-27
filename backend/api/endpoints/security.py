@@ -54,7 +54,7 @@ async def send_verification_email_endpoint(background_tasks: BackgroundTasks, em
         logger.warning("User not found for email %s", email)
         return {"message": "If the email exists, a verification code has been sent."}
     if user.status != "Active":
-        logger.warning("User with ID %s is not active", user.id))
+        logger.warning("User with ID %s is not active", user.id)
         raise HTTPException(status_code=403, detail="User is suspended")
     email = user.email
     code = random.randint(1000, 9999)
