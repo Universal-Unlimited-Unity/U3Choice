@@ -9,6 +9,5 @@ messages_table = Table(
     Column("receiver_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
     Column("content", String, nullable=False),
     Column("created_at", DateTime, nullable=False),
-    Column("test_alembic", String, nullable=True),
     Index("ix_messages_sender_receiver_created_at", "sender_id", "receiver_id")
 )
