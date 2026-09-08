@@ -4,6 +4,7 @@ U3Choice is a full-stack social platform featuring user profiles, friendships, r
 
 The backend was designed and built by me using **FastAPI, PostgreSQL, and Redis**, while the frontend was built using **Svelte 5**.
 
+Public link: choice.u3x.tech
 ## Tech Stack
 
 ### Backend
