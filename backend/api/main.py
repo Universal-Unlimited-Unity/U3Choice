@@ -13,6 +13,7 @@ from database import eng
 from redis_client import redis
 from sqlalchemy import text
 import logging
+from config import settings
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -36,7 +37,7 @@ app = FastAPI(title="U3Choice API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://choice.u3x.tech"    
+        settings.origin
     ],
     allow_credentials=True,
     allow_methods=["*"],

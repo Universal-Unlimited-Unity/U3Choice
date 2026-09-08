@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     TOKEN_KEY: str
     POSTGRES_HOST: str
     REDIS_PORT: str
+    origin: str
     sqlalchemy_url: str = Field(validation_alias="sqlalchemy.url")
     model_config = SettingsConfigDict(
         env_file=".env",
